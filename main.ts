@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { MarkdownView, Notice, Plugin } from "obsidian";
 import { ActiveFileContext, ClaudeCodeService, InternalEvent } from "./src/claude-service";
 import { ChatView, VIEW_TYPE_CLAUDE_CHAT } from "./src/chat-view";
 import { FileSyncService } from "./src/file-sync";
@@ -106,9 +106,7 @@ export default class ClaudeCodePlugin extends Plugin {
       })
     );
     this.registerEvent(
-      this.app.workspace.on("file-open", (file) => {
-        // Skip if the active view is the chat view
-        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      this.app.workspace.on("file-open", () => {
         const activeLeaf = this.app.workspace.activeLeaf;
         if (activeLeaf?.view?.getViewType() === VIEW_TYPE_CLAUDE_CHAT) return;
         this.updateActiveContext();
