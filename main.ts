@@ -386,32 +386,35 @@ export default class ClaudeCodePlugin extends Plugin {
     } finally {
       view.finishAssistantTurn();
       view.setStreaming(false);
-
-      // Save assistant message to store
-      if (this.conversationStore && this.activeConversationId && assistantText) {
-        const storedMsg: StoredMessage = {
-          role: "assistant",
-          content: assistantText,
-          timestamp: Date.now(),
-          thinkingContent: thinkingText || undefined,
-          toolBlocks: toolBlockMap.size > 0 ? Array.from(toolBlockMap.values()) : undefined,
-        };
-        await this.conversationStore.addMessage(this.activeConversationId, storedMsg);
-
-        // Update session ID
-        if (this.currentSessionId) {
-          await this.conversationStore.updateSessionId(
-            this.activeConversationId,
-            this.currentSessionId
-          );
-        }
-      }
-
+      await this.saveAssistantMessage(assistantText, thinkingText, toolBlockMap);
       this.refreshConversationList();
     }
   }
 
   // --- Conversation management ---
+
+  private async saveAssistantMessage(
+    text: string,
+    thinking: string,
+    toolBlockMap: Map<string, { toolId: string; toolName: string; input: string; isComplete: boolean }>
+  ): Promise<void> {
+    if (!this.conversationStore || !this.activeConversationId || !text) return;
+
+    await this.conversationStore.addMessage(this.activeConversationId, {
+      role: "assistant",
+      content: text,
+      timestamp: Date.now(),
+      thinkingContent: thinking || undefined,
+      toolBlocks: toolBlockMap.size > 0 ? Array.from(toolBlockMap.values()) : undefined,
+    });
+
+    if (this.currentSessionId) {
+      await this.conversationStore.updateSessionId(
+        this.activeConversationId,
+        this.currentSessionId
+      );
+    }
+  }
 
   private async ensureActiveConversation(firstMessage?: string): Promise<void> {
     if (this.activeConversationId && this.conversationStore?.get(this.activeConversationId)) {
