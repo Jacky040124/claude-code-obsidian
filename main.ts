@@ -540,10 +540,8 @@ export default class ClaudeCodePlugin extends Plugin {
     // Remove last assistant message
     await this.conversationStore.removeLastAssistantMessage(this.activeConversationId);
 
-    // Find last user message
-    const updated = this.conversationStore.get(this.activeConversationId);
-    if (!updated) return;
-    const lastUserMsg = [...updated.messages].reverse().find((m) => m.role === "user");
+    // Find last user message (conv is modified in-place by removeLastAssistantMessage)
+    const lastUserMsg = [...conv.messages].reverse().find((m) => m.role === "user");
     if (!lastUserMsg) return;
 
     // Reset session and resend
