@@ -245,6 +245,16 @@ export default class ClaudeCodePlugin extends Plugin {
     }
   }
 
+  private enrichWithFileContext(message: string): string {
+    if (!this.activeFileContext) return message;
+    const ctx = this.activeFileContext;
+    const parts = [`[Currently viewing: ${ctx.filePath}]`];
+    if (ctx.selection) parts.push(`[Selected text: ${ctx.selection}]`);
+    if (ctx.cursorLine != null) parts.push(`[Cursor at line ${ctx.cursorLine}]`);
+    if (ctx.tags?.length) parts.push(`[Tags: ${ctx.tags.join(", ")}]`);
+    return parts.join("\n") + "\n\n" + message;
+  }
+
   private async handleUserMessage(message: string): Promise<void> {
     const view = this.getChatView();
     if (!view || !this.claudeService) return;
@@ -270,17 +280,7 @@ export default class ClaudeCodePlugin extends Plugin {
     view.startAssistantTurn();
 
     try {
-      // Prepend active file context directly into the prompt
-      // (works reliably with both new and resumed sessions)
-      let enrichedMessage = message;
-      if (this.activeFileContext) {
-        const ctx = this.activeFileContext;
-        const parts = [`[Currently viewing: ${ctx.filePath}]`];
-        if (ctx.selection) parts.push(`[Selected text: ${ctx.selection}]`);
-        if (ctx.cursorLine != null) parts.push(`[Cursor at line ${ctx.cursorLine}]`);
-        if (ctx.tags?.length) parts.push(`[Tags: ${ctx.tags.join(", ")}]`);
-        enrichedMessage = parts.join("\n") + "\n\n" + message;
-      }
+      const enrichedMessage = this.enrichWithFileContext(message);
 
       const systemPrompt = this.settings.defaultSystemPrompt || undefined;
 
