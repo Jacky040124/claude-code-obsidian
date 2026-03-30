@@ -57,6 +57,7 @@ const MCP_TOOLS = [
   "mcp__obsidian__obsidian_edit",
   "mcp__obsidian__obsidian_write",
   "mcp__obsidian__obsidian_create",
+  "mcp__obsidian__obsidian_search",
 ];
 
 export class ClaudeCodeService extends EventEmitter {
@@ -149,6 +150,96 @@ export class ClaudeCodeService extends EventEmitter {
       });
       proc.on("error", () => resolve(false));
       proc.on("close", (code) => resolve(code === 0));
+    });
+  }
+
+  /**
+   * One-shot prompt: spawns an independent process (won't conflict with active chat),
+   * collects the full text response, and returns it.
+   */
+  async sendOneShot(prompt: string, workingDir: string): Promise<string> {
+    const args: string[] = [
+      "-p", prompt,
+      "--output-format", "stream-json",
+      "--model", this.model,
+    ];
+
+    return new Promise<string>((resolve, reject) => {
+      const proc = spawn(this.binaryPath, args, {
+        cwd: workingDir,
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, PATH: this.enhancedPath },
+      });
+
+      let buffer = "";
+      let result = "";
+
+      proc.stdout?.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString("utf-8");
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const event = JSON.parse(trimmed);
+            // Collect assistant text deltas
+            if (
+              event.type === "content_block_delta" &&
+              event.delta?.type === "text_delta"
+            ) {
+              result += event.delta.text;
+            }
+            // Also handle the assistant message result format
+            if (event.type === "assistant" && event.message?.content) {
+              for (const block of event.message.content) {
+                if (block.type === "text") result += block.text;
+              }
+            }
+            // Handle result event that contains the final text
+            if (event.type === "result" && event.result) {
+              // If we haven't collected text via deltas, use the result
+              if (!result) result = event.result;
+            }
+          } catch {
+            // skip malformed lines
+          }
+        }
+      });
+
+      proc.on("error", (err) => reject(err));
+
+      proc.on("close", (code) => {
+        // Process remaining buffer
+        if (buffer.trim()) {
+          try {
+            const event = JSON.parse(buffer.trim());
+            if (
+              event.type === "content_block_delta" &&
+              event.delta?.type === "text_delta"
+            ) {
+              result += event.delta.text;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (code !== 0 && !result) {
+          reject(new Error(`Claude CLI exited with code ${code}`));
+        } else {
+          resolve(result.trim());
+        }
+      });
+
+      // Timeout after maxTurnMs
+      setTimeout(() => {
+        if (!proc.killed) {
+          proc.kill("SIGTERM");
+          reject(new Error("Quick action timed out"));
+        }
+      }, this.maxTurnMs);
     });
   }
 

@@ -1,5 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { Plugin } from "obsidian";
+import { QuickAction, DEFAULT_QUICK_ACTIONS } from "./quick-actions";
 
 export interface ClaudeCodeSettings {
 	claudeBinaryPath: string;
@@ -9,6 +10,11 @@ export interface ClaudeCodeSettings {
 	sessionPersistence: boolean;
 	maxResponseTimeout: number;
 	defaultSystemPrompt: string;
+	maxAtReferenceChars: number;
+	enableGraphContext: boolean;
+	maxGraphNotes: number;
+	graphSummaryLines: number;
+	quickActions: QuickAction[];
 }
 
 export const DEFAULT_SETTINGS: ClaudeCodeSettings = {
@@ -19,6 +25,11 @@ export const DEFAULT_SETTINGS: ClaudeCodeSettings = {
 	sessionPersistence: true,
 	maxResponseTimeout: 120,
 	defaultSystemPrompt: "",
+	maxAtReferenceChars: 8000,
+	enableGraphContext: false,
+	maxGraphNotes: 5,
+	graphSummaryLines: 3,
+	quickActions: DEFAULT_QUICK_ACTIONS,
 };
 
 const ALL_TOOLS = [
@@ -183,6 +194,96 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 		if (systemPromptTextarea) {
 			systemPromptTextarea.style.width = "100%";
 			systemPromptTextarea.style.minHeight = "80px";
+		}
+
+		// --- Context ---
+		new Setting(containerEl).setName("Context").setHeading();
+
+		new Setting(containerEl)
+			.setName("Max @ reference characters")
+			.setDesc("Maximum characters to include per @-referenced note.")
+			.addText((text) =>
+				text
+					.setPlaceholder("8000")
+					.setValue(String(this.plugin.settings.maxAtReferenceChars))
+					.onChange(async (value) => {
+						const num = parseInt(value, 10);
+						if (!isNaN(num) && num > 0) {
+							this.plugin.settings.maxAtReferenceChars = num;
+							await this.plugin.saveSettings();
+						}
+					})
+			);
+
+		// --- Graph Context ---
+		new Setting(containerEl).setName("Graph context").setHeading();
+
+		new Setting(containerEl)
+			.setName("Enable graph context")
+			.setDesc("Include outgoing links and backlinks of the active note as context.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableGraphContext)
+					.onChange(async (value) => {
+						this.plugin.settings.enableGraphContext = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Max graph notes")
+			.setDesc("Maximum number of linked notes to include per direction.")
+			.addText((text) =>
+				text
+					.setPlaceholder("5")
+					.setValue(String(this.plugin.settings.maxGraphNotes))
+					.onChange(async (value) => {
+						const num = parseInt(value, 10);
+						if (!isNaN(num) && num > 0) {
+							this.plugin.settings.maxGraphNotes = num;
+							await this.plugin.saveSettings();
+						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Graph summary lines")
+			.setDesc("Number of lines to use as a summary for each linked note.")
+			.addText((text) =>
+				text
+					.setPlaceholder("3")
+					.setValue(String(this.plugin.settings.graphSummaryLines))
+					.onChange(async (value) => {
+						const num = parseInt(value, 10);
+						if (!isNaN(num) && num > 0) {
+							this.plugin.settings.graphSummaryLines = num;
+							await this.plugin.saveSettings();
+						}
+					})
+			);
+
+		// --- Quick Actions ---
+		new Setting(containerEl).setName("Quick actions").setHeading();
+
+		new Setting(containerEl).setDesc(
+			"AI actions available in the right-click editor menu. Select text and right-click to use."
+		);
+
+		// Ensure quickActions is initialized
+		if (!this.plugin.settings.quickActions) {
+			this.plugin.settings.quickActions = [...DEFAULT_QUICK_ACTIONS];
+		}
+
+		for (const action of this.plugin.settings.quickActions) {
+			new Setting(containerEl)
+				.setName(action.label)
+				.setDesc(`Mode: ${action.mode === "replace" ? "Replace selection" : "Insert after selection"}`)
+				.addToggle((toggle) =>
+					toggle.setValue(action.enabled).onChange(async (value) => {
+						action.enabled = value;
+						await this.plugin.saveSettings();
+					})
+				);
 		}
 	}
 

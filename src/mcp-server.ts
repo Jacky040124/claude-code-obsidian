@@ -291,6 +291,18 @@ export class ObsidianMcpServer {
           return await this.toolWrite(args as { file_path: string; content: string });
         case "obsidian_create":
           return await this.toolCreate(args as { file_path: string; content: string });
+        case "obsidian_search":
+          return await this.toolSearch(
+            args as {
+              query?: string;
+              tags?: string[];
+              property?: { key: string; value: string };
+              linked_to?: string;
+              linked_from?: string;
+              days_recent?: number;
+              limit?: number;
+            }
+          );
         default:
           return mcpError(`Unknown tool: ${name}`);
       }
@@ -349,6 +361,49 @@ export class ObsidianMcpServer {
             content: { type: "string", description: "File content" },
           },
           required: ["file_path", "content"],
+        },
+      },
+      {
+        name: "obsidian_search",
+        description:
+          "Search the Obsidian vault by content, tags, frontmatter properties, links, or recency. All parameters are optional - combine them to narrow results.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "Text to search for in file content (case-insensitive)",
+            },
+            tags: {
+              type: "array",
+              items: { type: "string" },
+              description: "Filter by tags, e.g. ['#project', '#todo']",
+            },
+            property: {
+              type: "object",
+              properties: {
+                key: { type: "string" },
+                value: { type: "string" },
+              },
+              description: "Filter by frontmatter property key-value pair",
+            },
+            linked_to: {
+              type: "string",
+              description: "Find files that link TO this file path",
+            },
+            linked_from: {
+              type: "string",
+              description: "Find files linked FROM this file path",
+            },
+            days_recent: {
+              type: "number",
+              description: "Only include files modified within this many days",
+            },
+            limit: {
+              type: "number",
+              description: "Max results to return (default 20)",
+            },
+          },
         },
       },
     ];
@@ -464,6 +519,130 @@ export class ObsidianMcpServer {
     await this.app.vault.create(file_path, content);
     new Notice(`Created: ${file_path}`);
     return mcpText(`Created ${file_path}`);
+  }
+
+  private async toolSearch(args: {
+    query?: string;
+    tags?: string[];
+    property?: { key: string; value: string };
+    linked_to?: string;
+    linked_from?: string;
+    days_recent?: number;
+    limit?: number;
+  }) {
+    let candidates = this.app.vault.getMarkdownFiles();
+
+    // Filter by recency (cheapest)
+    if (args.days_recent != null) {
+      const cutoff = Date.now() - args.days_recent * 86400000;
+      candidates = candidates.filter((f) => f.stat.mtime > cutoff);
+    }
+
+    // Filter by tags
+    if (args.tags && args.tags.length > 0) {
+      candidates = candidates.filter((f) => {
+        const fileTags = this.app.metadataCache.getFileCache(f)?.tags;
+        if (!fileTags) return false;
+        return args.tags!.some((requested) =>
+          fileTags.some((ft) => ft.tag === requested)
+        );
+      });
+    }
+
+    // Filter by frontmatter property
+    if (args.property) {
+      const { key, value } = args.property;
+      candidates = candidates.filter((f) => {
+        const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+        if (!fm || !(key in fm)) return false;
+        const fmVal = fm[key];
+        if (Array.isArray(fmVal)) return fmVal.map(String).includes(value);
+        return String(fmVal) === value;
+      });
+    }
+
+    // Filter by linked_to (backlinks — files that link TO the given path)
+    if (args.linked_to) {
+      const candidatePaths = new Set(candidates.map((f) => f.path));
+      const sourcePaths = new Set<string>();
+      for (const [source, targets] of Object.entries(
+        this.app.metadataCache.resolvedLinks
+      )) {
+        if ((targets as Record<string, number>)[args.linked_to] != null) {
+          sourcePaths.add(source);
+        }
+      }
+      candidates = candidates.filter(
+        (f) => candidatePaths.has(f.path) && sourcePaths.has(f.path)
+      );
+    }
+
+    // Filter by linked_from (outgoing links FROM the given path)
+    if (args.linked_from) {
+      const targets = this.app.metadataCache.resolvedLinks[args.linked_from];
+      if (!targets) {
+        candidates = [];
+      } else {
+        const targetPaths = new Set(Object.keys(targets as Record<string, number>));
+        candidates = candidates.filter((f) => targetPaths.has(f.path));
+      }
+    }
+
+    // Content search (most expensive — do last, cap at 100 reads)
+    interface SearchResult {
+      path: string;
+      snippet?: string;
+      tags?: string[];
+      mtime: string;
+    }
+
+    let results: SearchResult[];
+
+    if (args.query) {
+      const queryLower = args.query.toLowerCase();
+      const toSearch = candidates.slice(0, 100);
+      results = [];
+      for (const file of toSearch) {
+        const content = await this.app.vault.read(file);
+        const idxMatch = content.toLowerCase().indexOf(queryLower);
+        if (idxMatch === -1) continue;
+
+        const snippetStart = Math.max(0, idxMatch - 80);
+        const snippetEnd = Math.min(content.length, idxMatch + args.query.length + 120);
+        const snippet = content.substring(snippetStart, snippetEnd);
+
+        const fileTags = this.app.metadataCache.getFileCache(file)?.tags?.map((t) => t.tag);
+        results.push({
+          path: file.path,
+          snippet,
+          tags: fileTags,
+          mtime: new Date(file.stat.mtime).toISOString(),
+        });
+      }
+    } else {
+      results = candidates.map((file) => {
+        const fileTags = this.app.metadataCache.getFileCache(file)?.tags?.map((t) => t.tag);
+        return {
+          path: file.path,
+          tags: fileTags,
+          mtime: new Date(file.stat.mtime).toISOString(),
+        };
+      });
+    }
+
+    // Sort by mtime descending
+    results.sort((a, b) => new Date(b.mtime).getTime() - new Date(a.mtime).getTime());
+
+    // Apply limit
+    results = results.slice(0, args.limit ?? 20);
+
+    if (results.length === 0) {
+      return mcpText(
+        JSON.stringify({ results: [], message: "No files matched the search criteria" })
+      );
+    }
+
+    return mcpText(JSON.stringify(results, null, 2));
   }
 
   // ---------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Plugin } from "obsidian";
+import { Editor, MarkdownView, Notice, Plugin, TFile } from "obsidian";
 import { ActiveFileContext, ClaudeCodeService } from "./src/claude-service";
 import { ChatView, VIEW_TYPE_CLAUDE_CHAT } from "./src/chat-view";
 import { FileSyncService } from "./src/file-sync";
@@ -10,6 +10,7 @@ import {
 } from "./src/settings";
 import { discoverSkills } from "./src/slash-commands";
 import { ConversationStore } from "./src/conversation-store";
+import { QuickAction } from "./src/quick-actions";
 
 export default class ClaudeCodePlugin extends Plugin {
   settings: ClaudeCodeSettings = DEFAULT_SETTINGS;
@@ -135,6 +136,27 @@ export default class ClaudeCodePlugin extends Plugin {
         const activeLeaf = this.app.workspace.activeLeaf;
         if (activeLeaf?.view?.getViewType() === VIEW_TYPE_CLAUDE_CHAT) return;
         this.updateActiveContext();
+      })
+    );
+
+    // Right-click quick actions
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor) => {
+        const selection = editor.getSelection();
+        if (!selection) return;
+
+        const actions = this.settings.quickActions.filter((a) => a.enabled);
+        if (actions.length === 0) return;
+
+        menu.addSeparator();
+        for (const action of actions) {
+          menu.addItem((item) => {
+            item
+              .setTitle(`Claude: ${action.label}`)
+              .setIcon("bot")
+              .onClick(() => this.runQuickAction(action, editor, selection));
+          });
+        }
       })
     );
 
@@ -270,14 +292,160 @@ export default class ClaudeCodePlugin extends Plugin {
     }
   }
 
-  private enrichWithFileContext(message: string): string {
+  private async resolveAtReferences(message: string): Promise<string> {
+    const pattern = /@([\w/.\-\u4e00-\u9fff ]+\.(?:md|canvas))/g;
+    const matches = [...message.matchAll(pattern)];
+    if (matches.length === 0) return message;
+
+    const contextBlocks: string[] = [];
+    for (const match of matches) {
+      const path = match[1];
+      const abstractFile = this.app.vault.getAbstractFileByPath(path);
+      if (!(abstractFile instanceof TFile)) continue;
+
+      let content = await this.app.vault.read(abstractFile);
+      if (content.length > this.settings.maxAtReferenceChars) {
+        content = content.slice(0, this.settings.maxAtReferenceChars) + "\n...truncated";
+      }
+      contextBlocks.push(`[Referenced note: ${path}]\n${content}\n`);
+    }
+
+    if (contextBlocks.length === 0) return message;
+    return contextBlocks.join("\n") + "\n" + message;
+  }
+
+  private async buildGraphContext(filePath: string): Promise<string> {
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!(file instanceof TFile)) return "";
+
+    const cache = this.app.metadataCache.getFileCache(file);
+    const maxNotes = this.settings.maxGraphNotes;
+
+    // Outgoing links
+    const outgoing: TFile[] = [];
+    if (cache?.links) {
+      for (const link of cache.links) {
+        const dest = this.app.metadataCache.getFirstLinkpathDest(link.link, filePath);
+        if (dest instanceof TFile && outgoing.length < maxNotes) {
+          outgoing.push(dest);
+        }
+      }
+    }
+
+    // Backlinks
+    const backlinks: TFile[] = [];
+    const resolvedLinks = this.app.metadataCache.resolvedLinks;
+    for (const [sourcePath, targets] of Object.entries(resolvedLinks)) {
+      if (targets[filePath] && targets[filePath] > 0 && sourcePath !== filePath) {
+        const src = this.app.vault.getAbstractFileByPath(sourcePath);
+        if (src instanceof TFile) {
+          backlinks.push(src);
+          if (backlinks.length >= maxNotes) break;
+        }
+      }
+    }
+
+    if (outgoing.length === 0 && backlinks.length === 0) return "";
+
+    const getSummary = async (f: TFile): Promise<string> => {
+      const fc = this.app.metadataCache.getFileCache(f);
+      if (fc?.frontmatter?.description) return String(fc.frontmatter.description);
+
+      const content = await this.app.vault.read(f);
+      const lines = content.split("\n");
+      let i = 0;
+      // Skip frontmatter
+      if (lines[0]?.trim() === "---") {
+        i = 1;
+        while (i < lines.length && lines[i].trim() !== "---") i++;
+        i++; // skip closing ---
+      }
+      const summaryLines: string[] = [];
+      while (i < lines.length && summaryLines.length < this.settings.graphSummaryLines) {
+        const line = lines[i].trim();
+        if (line) summaryLines.push(line);
+        i++;
+      }
+      return summaryLines.join(" ");
+    };
+
+    const parts: string[] = [`[Graph context for ${file.basename}]`];
+
+    if (outgoing.length > 0) {
+      parts.push("Outgoing links:");
+      for (const f of outgoing) {
+        const summary = await getSummary(f);
+        parts.push(`- ${f.path}: ${summary}`);
+      }
+    }
+
+    if (backlinks.length > 0) {
+      parts.push("Backlinks:");
+      for (const f of backlinks) {
+        const summary = await getSummary(f);
+        parts.push(`- ${f.path}: ${summary}`);
+      }
+    }
+
+    return parts.join("\n");
+  }
+
+  private async enrichWithFileContext(message: string): Promise<string> {
     if (!this.activeFileContext) return message;
     const ctx = this.activeFileContext;
     const parts = [`[Currently viewing: ${ctx.filePath}]`];
     if (ctx.selection) parts.push(`[Selected text: ${ctx.selection}]`);
     if (ctx.cursorLine != null) parts.push(`[Cursor at line ${ctx.cursorLine}]`);
     if (ctx.tags?.length) parts.push(`[Tags: ${ctx.tags.join(", ")}]`);
+
+    if (this.settings.enableGraphContext) {
+      const graphCtx = await this.buildGraphContext(ctx.filePath);
+      if (graphCtx) parts.push(graphCtx);
+    }
+
     return parts.join("\n") + "\n\n" + message;
+  }
+
+  private async runQuickAction(action: QuickAction, editor: Editor, selection: string): Promise<void> {
+    if (!this.claudeService) {
+      new Notice("Claude Code service not available");
+      return;
+    }
+
+    const vaultPath = (
+      this.app.vault.adapter as { getBasePath?: () => string }
+    ).getBasePath?.();
+    if (!vaultPath) {
+      new Notice("Could not determine vault path");
+      return;
+    }
+
+    const notice = new Notice(`Claude: ${action.label}...`, 0);
+
+    try {
+      const prompt = action.prompt.replace("{{selection}}", selection);
+      const result = await this.claudeService.sendOneShot(prompt, vaultPath);
+
+      if (!result) {
+        notice.hide();
+        new Notice("Claude returned an empty response");
+        return;
+      }
+
+      if (action.mode === "replace") {
+        editor.replaceSelection(result);
+      } else {
+        // insert_after
+        editor.replaceSelection(selection + "\n\n" + result);
+      }
+
+      notice.hide();
+      new Notice(`Claude: ${action.label} done`);
+    } catch (err) {
+      notice.hide();
+      const msg = err instanceof Error ? err.message : String(err);
+      new Notice(`Claude error: ${msg}`);
+    }
   }
 
   private async handleUserMessage(message: string): Promise<void> {
@@ -321,7 +489,8 @@ export default class ClaudeCodePlugin extends Plugin {
     const toolBlockMap = new Map<string, { toolId: string; toolName: string; input: string; isComplete: boolean }>();
 
     try {
-      const enrichedMessage = this.enrichWithFileContext(message);
+      const withRefs = await this.resolveAtReferences(message);
+      const enrichedMessage = await this.enrichWithFileContext(withRefs);
 
       const systemPrompt = this.settings.defaultSystemPrompt || undefined;
 

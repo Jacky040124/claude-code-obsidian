@@ -72,7 +72,8 @@
 	background-color: var(--background-modifier-hover);
 }
 
-.claude-header-btn svg {
+.claude-header-btn svg,
+.claude-header-btn .svg-icon {
 	width: 16px;
 	height: 16px;
 }
@@ -179,10 +180,10 @@
 .claude-chat-messages {
 	flex: 1;
 	overflow-y: auto;
-	padding: 12px;
+	padding: 16px;
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 12px;
 }
 
 /* --- Message Layout --- */
@@ -208,6 +209,7 @@
 .claude-turn-content {
 	flex: 1;
 	min-width: 0;
+	padding: 0 4px;
 }
 
 /* --- User Message Bubble --- */
@@ -273,7 +275,8 @@
 	color: var(--color-green);
 }
 
-.claude-msg-action-btn svg {
+.claude-msg-action-btn svg,
+.claude-msg-action-btn .svg-icon {
 	width: 14px;
 	height: 14px;
 }
@@ -307,7 +310,8 @@
 	display: none;
 }
 
-.claude-chat-stop-btn svg {
+.claude-chat-stop-btn svg,
+.claude-chat-stop-btn .svg-icon {
 	width: 12px;
 	height: 12px;
 }
@@ -406,7 +410,8 @@
 	color: var(--color-green);
 }
 
-.claude-code-copy-btn svg {
+.claude-code-copy-btn svg,
+.claude-code-copy-btn .svg-icon {
 	width: 12px;
 	height: 12px;
 }
@@ -414,18 +419,18 @@
 /* --- Assistant Serif Text --- */
 
 .claude-serif {
-	font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+	font-family: Charter, ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
 }
 
 /* --- Thinking Block --- */
 
 .claude-turn-thinking {
 	border-left: 3px solid var(--claude-accent);
-	padding: 4px 8px;
+	padding: 6px 12px;
 	font-size: var(--font-ui-smaller);
 	color: var(--claude-text-muted);
 	cursor: pointer;
-	margin: 4px 0;
+	margin: 6px 0;
 }
 
 .claude-turn-thinking.active {
@@ -493,7 +498,7 @@
 /* --- Tool Block --- */
 
 .claude-tool-block {
-	margin: 6px 0;
+	margin: 6px 0 6px 2px;
 	border: 1px solid var(--claude-border);
 	border-radius: 6px;
 	overflow: hidden;
@@ -519,7 +524,8 @@
 	color: var(--claude-accent);
 }
 
-.claude-tool-icon svg {
+.claude-tool-icon svg,
+.claude-tool-icon .svg-icon {
 	width: 12px;
 	height: 12px;
 }
@@ -628,7 +634,8 @@
 	align-items: center;
 }
 
-.claude-error-icon svg {
+.claude-error-icon svg,
+.claude-error-icon .svg-icon {
 	width: 14px;
 	height: 14px;
 }
@@ -779,7 +786,8 @@
 	cursor: not-allowed;
 }
 
-.claude-chat-send-btn svg {
+.claude-chat-send-btn svg,
+.claude-chat-send-btn .svg-icon {
 	width: 14px;
 	height: 14px;
 }
@@ -825,7 +833,8 @@
 	background-color: var(--background-modifier-hover);
 }
 
-.claude-attach-btn svg {
+.claude-attach-btn svg,
+.claude-attach-btn .svg-icon {
 	width: 14px;
 	height: 14px;
 }
@@ -869,7 +878,8 @@
 	flex-shrink: 0;
 }
 
-.claude-attachment-icon svg {
+.claude-attachment-icon svg,
+.claude-attachment-icon .svg-icon {
 	width: 16px;
 	height: 16px;
 }
@@ -912,7 +922,8 @@
 	background-color: rgba(var(--color-red-rgb), 0.1);
 }
 
-.claude-attachment-remove svg {
+.claude-attachment-remove svg,
+.claude-attachment-remove .svg-icon {
 	width: 12px;
 	height: 12px;
 }
@@ -976,7 +987,8 @@
 	color: var(--claude-text-muted);
 }
 
-.claude-autocomplete-icon svg {
+.claude-autocomplete-icon svg,
+.claude-autocomplete-icon .svg-icon {
 	width: 14px;
 	height: 14px;
 }

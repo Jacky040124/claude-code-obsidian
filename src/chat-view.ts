@@ -4,10 +4,10 @@ import {
 	Menu,
 	TFile,
 	WorkspaceLeaf,
-	setIcon,
 } from "obsidian";
 import { SlashCommand } from "./slash-commands";
 import { ConversationSummary } from "./conversation-store";
+import { renderIcon } from "./icons";
 
 export interface FileContext {
 	file?: string;
@@ -51,6 +51,7 @@ const VAULT_TOOL_MAP: Record<string, { displayName: string; action: string }> = 
 	obsidian_write: { displayName: "Vault Write", action: "Writing" },
 	obsidian_create: { displayName: "Vault Create", action: "Creating" },
 	obsidian_read_active: { displayName: "Vault Read", action: "Reading active file" },
+	obsidian_search: { displayName: "Vault Search", action: "Searching vault" },
 };
 
 function parseMcpToolName(rawName: string): McpToolInfo {
@@ -218,7 +219,7 @@ export class ChatView extends ItemView {
 			cls: "claude-header-btn",
 			attr: { "aria-label": "Conversation history" },
 		});
-		setIcon(historyBtn, "list");
+		renderIcon(historyBtn, "list");
 		historyBtn.addEventListener("click", () => this.toggleConversationPanel());
 
 		headerEl.createSpan({ text: "Claude Code", cls: "claude-header-title" });
@@ -227,7 +228,7 @@ export class ChatView extends ItemView {
 			cls: "claude-header-btn",
 			attr: { "aria-label": "New chat" },
 		});
-		setIcon(newChatBtn, "plus");
+		renderIcon(newChatBtn, "plus");
 		newChatBtn.addEventListener("click", () => {
 			if (this.onNewChat) this.onNewChat();
 		});
@@ -301,7 +302,7 @@ export class ChatView extends ItemView {
 			cls: "claude-attach-btn",
 			attr: { "aria-label": "Attach file" },
 		});
-		setIcon(attachBtn, "paperclip");
+		renderIcon(attachBtn, "paperclip");
 		attachBtn.addEventListener("click", () => this.openFilePicker());
 
 		this.fileIndicatorEl = toolbarLeft.createSpan({ cls: "claude-file-indicator" });
@@ -328,12 +329,12 @@ export class ChatView extends ItemView {
 		this.sendBtnEl = toolbarRight.createEl("button", {
 			cls: "claude-chat-send-btn",
 		});
-		setIcon(this.sendBtnEl, "send");
+		renderIcon(this.sendBtnEl, "send");
 
 		this.stopBtnEl = toolbarRight.createEl("button", {
 			cls: "claude-chat-stop-btn hidden",
 		});
-		setIcon(this.stopBtnEl, "square");
+		renderIcon(this.stopBtnEl, "square");
 		this.stopBtnEl.addEventListener("click", () => {
 			if (this.onStopGeneration) this.onStopGeneration();
 		});
@@ -378,6 +379,7 @@ export class ChatView extends ItemView {
 	async onClose(): Promise<void> {
 		this.cancelPendingRafs();
 		this.closeModelDropdown();
+		this.clearAttachments();
 		this.messages = [];
 	}
 
@@ -550,7 +552,7 @@ export class ChatView extends ItemView {
 		const headerEl = containerEl.createDiv({ cls: "claude-tool-header" });
 
 		const iconEl = headerEl.createSpan({ cls: "claude-tool-icon" });
-		setIcon(iconEl, mcpInfo.isVaultOp ? "vault" : mcpInfo.isMcp ? "plug" : "wrench");
+		renderIcon(iconEl, mcpInfo.isVaultOp ? "box" : mcpInfo.isMcp ? "plug" : "wrench");
 
 		headerEl.createSpan({ text: mcpInfo.displayName, cls: "claude-tool-name" });
 
@@ -561,7 +563,7 @@ export class ChatView extends ItemView {
 
 		const statusEl = headerEl.createSpan({ cls: "claude-tool-status" });
 		const spinnerEl = statusEl.createSpan({ cls: "claude-tool-icon running" });
-		setIcon(spinnerEl, "loader");
+		renderIcon(spinnerEl, "loader");
 
 		// Body (collapsed by default)
 		const bodyEl = containerEl.createDiv({ cls: "claude-tool-body" });
@@ -608,7 +610,7 @@ export class ChatView extends ItemView {
 		block.finalized = true;
 		block.statusEl.empty();
 		const doneIcon = block.statusEl.createSpan({ cls: "claude-tool-icon done" });
-		setIcon(doneIcon, "check-circle");
+		renderIcon(doneIcon, "circle-check");
 
 		// Final parse attempt for summary
 		try {
@@ -646,7 +648,7 @@ export class ChatView extends ItemView {
 
 		const errorEl = parent.createDiv({ cls: "claude-msg-error" });
 		const iconEl = errorEl.createSpan({ cls: "claude-error-icon" });
-		setIcon(iconEl, "alert-circle");
+		renderIcon(iconEl, "circle-alert");
 		errorEl.createSpan({ text: message });
 	}
 
@@ -674,7 +676,7 @@ export class ChatView extends ItemView {
 				cls: "claude-msg-action-btn",
 				attr: { "aria-label": "Copy response" },
 			});
-			setIcon(copyBtn, "copy");
+			renderIcon(copyBtn, "copy");
 			const responseText = this.textBuffer;
 			copyBtn.addEventListener("click", (e) => {
 				e.stopPropagation();
@@ -685,7 +687,7 @@ export class ChatView extends ItemView {
 				cls: "claude-msg-action-btn",
 				attr: { "aria-label": "Regenerate response" },
 			});
-			setIcon(regenBtn, "refresh-cw");
+			renderIcon(regenBtn, "refresh-cw");
 			regenBtn.addEventListener("click", (e) => {
 				e.stopPropagation();
 				if (this.onRegenerateResponse) this.onRegenerateResponse();
@@ -975,7 +977,7 @@ export class ChatView extends ItemView {
 		navigator.clipboard.writeText(text).then(() => {
 			const originalIcon = btnEl.innerHTML;
 			btnEl.empty();
-			setIcon(btnEl, "check");
+			renderIcon(btnEl, "check");
 			btnEl.addClass("copied");
 			setTimeout(() => {
 				btnEl.empty();
@@ -1052,7 +1054,7 @@ export class ChatView extends ItemView {
 				cls: "claude-code-copy-btn",
 				attr: { "aria-label": "Copy code" },
 			});
-			setIcon(copyBtn, "copy");
+			renderIcon(copyBtn, "copy");
 			copyBtn.addEventListener("click", (e) => {
 				e.stopPropagation();
 				this.copyToClipboard(codeEl.textContent ?? "", copyBtn);
@@ -1170,7 +1172,7 @@ export class ChatView extends ItemView {
 				});
 			} else {
 				const iconEl = item.createSpan({ cls: "claude-attachment-icon" });
-				setIcon(iconEl, this.getFileIcon(att.type));
+				renderIcon(iconEl, this.getFileIcon(att.type));
 			}
 
 			const info = item.createDiv({ cls: "claude-attachment-info" });
@@ -1184,7 +1186,7 @@ export class ChatView extends ItemView {
 				cls: "claude-attachment-remove",
 				attr: { "aria-label": "Remove" },
 			});
-			setIcon(removeBtn, "x");
+			renderIcon(removeBtn, "x");
 			removeBtn.addEventListener("click", (e) => {
 				e.stopPropagation();
 				this.removeAttachment(idx);
@@ -1238,7 +1240,7 @@ export class ChatView extends ItemView {
 			cls: "claude-msg-action-btn",
 			attr: { "aria-label": "Copy message" },
 		});
-		setIcon(copyBtn, "copy");
+		renderIcon(copyBtn, "copy");
 		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			this.copyToClipboard(msg.content, copyBtn);
@@ -1248,7 +1250,7 @@ export class ChatView extends ItemView {
 			cls: "claude-msg-action-btn",
 			attr: { "aria-label": "Edit message" },
 		});
-		setIcon(editBtn, "pencil");
+		renderIcon(editBtn, "pencil");
 		editBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			this.startEditMessage(wrapper, msg, msgIndex);
@@ -1527,7 +1529,7 @@ export class ChatView extends ItemView {
 				cls: `claude-autocomplete-item ${i === 0 ? "active" : ""}`,
 			});
 			const iconEl = item.createSpan({ cls: "claude-autocomplete-icon" });
-			setIcon(iconEl, "file-text");
+			renderIcon(iconEl, "file-text");
 			item.createSpan({ text: file.path, cls: "claude-autocomplete-path" });
 			item.addEventListener("click", () => {
 				this.autocompleteIndex = i;
@@ -1618,7 +1620,7 @@ export class ChatView extends ItemView {
 				cls: `claude-autocomplete-item ${i === 0 ? "active" : ""}`,
 			});
 			const iconEl = item.createSpan({ cls: "claude-autocomplete-icon" });
-			setIcon(iconEl, "terminal");
+			renderIcon(iconEl, "terminal");
 			item.createSpan({ text: `/${cmd.name}`, cls: "claude-slash-name" });
 			item.createSpan({ text: ` — ${cmd.description}`, cls: "claude-slash-desc" });
 			item.addEventListener("click", () => {
