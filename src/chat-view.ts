@@ -2,11 +2,13 @@ import {
 	App,
 	ItemView,
 	MarkdownRenderer,
+	Menu,
 	TFile,
 	WorkspaceLeaf,
 	setIcon,
 } from "obsidian";
 import { SlashCommand } from "./slash-commands";
+import { ConversationSummary } from "./conversation-store";
 
 export interface FileContext {
 	file?: string;
@@ -26,6 +28,14 @@ export interface ChatMessage {
 	role: "user" | "assistant";
 	content: string;
 	timestamp: number;
+}
+
+export interface FileAttachment {
+	name: string;
+	type: string; // MIME type
+	size: number;
+	data: ArrayBuffer;
+	previewUrl?: string; // Object URL for image previews
 }
 
 // --- MCP tool name helpers ---
@@ -123,7 +133,7 @@ export class ChatView extends ItemView {
 	private autocompleteEl: HTMLElement;
 	private autocompleteFiles: TFile[] = [];
 	private autocompleteIndex = 0;
-	private onSendMessage: ((message: string) => void) | null = null;
+	private onSendMessage: ((message: string, attachments?: FileAttachment[]) => void) | null = null;
 
 	// --- Model selector state ---
 	private currentModel = "sonnet";
@@ -141,6 +151,29 @@ export class ChatView extends ItemView {
 	private slashAutocompleteIndex = 0;
 	private activeFileContext: FileContext = {};
 	private fileIndicatorEl: HTMLElement | null = null;
+
+	// --- Conversation list state ---
+	private conversationListEl: HTMLElement | null = null;
+	private conversationSearchEl: HTMLInputElement | null = null;
+	private conversationItemsEl: HTMLElement | null = null;
+	private conversationPanelOpen = false;
+	private activeConversationId: string | null = null;
+	private onNewChat: (() => void) | null = null;
+	private onSwitchConversation: ((id: string) => void) | null = null;
+	private onDeleteConversation: ((id: string) => void) | null = null;
+	private onRenameConversation: ((id: string, title: string) => void) | null = null;
+	private conversations: ConversationSummary[] = [];
+
+	// --- File upload state ---
+	private pendingAttachments: FileAttachment[] = [];
+	private attachmentPreviewEl: HTMLElement | null = null;
+	private dropOverlayEl: HTMLElement | null = null;
+
+	// --- Message operation state ---
+	private onStopGeneration: (() => void) | null = null;
+	private onEditAndResend: ((messageIndex: number, newContent: string) => void) | null = null;
+	private onRegenerateResponse: (() => void) | null = null;
+	private stopBtnEl: HTMLButtonElement | null = null;
 
 	// --- Assistant turn state ---
 	private currentTurnEl: HTMLElement | null = null;
@@ -179,6 +212,44 @@ export class ChatView extends ItemView {
 		contentEl.empty();
 		contentEl.addClass("claude-chat-container");
 
+		// Header bar
+		const headerEl = contentEl.createDiv({ cls: "claude-chat-header" });
+
+		const historyBtn = headerEl.createEl("button", {
+			cls: "claude-header-btn",
+			attr: { "aria-label": "Conversation history" },
+		});
+		setIcon(historyBtn, "list");
+		historyBtn.addEventListener("click", () => this.toggleConversationPanel());
+
+		headerEl.createSpan({ text: "Claude Code", cls: "claude-header-title" });
+
+		const newChatBtn = headerEl.createEl("button", {
+			cls: "claude-header-btn",
+			attr: { "aria-label": "New chat" },
+		});
+		setIcon(newChatBtn, "plus");
+		newChatBtn.addEventListener("click", () => {
+			if (this.onNewChat) this.onNewChat();
+		});
+
+		// Conversation list panel (hidden by default)
+		this.conversationListEl = contentEl.createDiv({
+			cls: "claude-conversation-panel hidden",
+		});
+
+		this.conversationSearchEl = this.conversationListEl.createEl("input", {
+			cls: "claude-conversation-search",
+			attr: { placeholder: "Search conversations...", type: "text" },
+		});
+		this.conversationSearchEl.addEventListener("input", () => {
+			this.renderConversationList();
+		});
+
+		this.conversationItemsEl = this.conversationListEl.createDiv({
+			cls: "claude-conversation-items",
+		});
+
 		// Message list
 		this.messageListEl = contentEl.createDiv({ cls: "claude-chat-messages" });
 
@@ -202,8 +273,19 @@ export class ChatView extends ItemView {
 			cls: "claude-slash-autocomplete hidden",
 		});
 
+		// Drag & drop overlay
+		this.dropOverlayEl = inputArea.createDiv({
+			cls: "claude-drop-overlay hidden",
+		});
+		this.dropOverlayEl.createSpan({ text: "Drop files here" });
+
 		// Input box — contains textarea + toolbar
 		const inputBox = inputArea.createDiv({ cls: "claude-input-box" });
+
+		// Attachment preview area (above textarea, hidden when empty)
+		this.attachmentPreviewEl = inputBox.createDiv({
+			cls: "claude-attachment-preview hidden",
+		});
 
 		this.inputEl = inputBox.createEl("textarea", {
 			cls: "claude-chat-input",
@@ -213,8 +295,16 @@ export class ChatView extends ItemView {
 		// Toolbar inside the input box
 		const toolbar = inputBox.createDiv({ cls: "claude-input-toolbar" });
 
-		// Left: file indicator
+		// Left: attach button + file indicator
 		const toolbarLeft = toolbar.createDiv({ cls: "claude-input-toolbar-left" });
+
+		const attachBtn = toolbarLeft.createEl("button", {
+			cls: "claude-attach-btn",
+			attr: { "aria-label": "Attach file" },
+		});
+		setIcon(attachBtn, "paperclip");
+		attachBtn.addEventListener("click", () => this.openFilePicker());
+
 		this.fileIndicatorEl = toolbarLeft.createSpan({ cls: "claude-file-indicator" });
 		this.updateFileIndicator();
 
@@ -241,10 +331,49 @@ export class ChatView extends ItemView {
 		});
 		setIcon(this.sendBtnEl, "send");
 
+		this.stopBtnEl = toolbarRight.createEl("button", {
+			cls: "claude-chat-stop-btn hidden",
+		});
+		setIcon(this.stopBtnEl, "square");
+		this.stopBtnEl.addEventListener("click", () => {
+			if (this.onStopGeneration) this.onStopGeneration();
+		});
+
 		// Event listeners
 		this.inputEl.addEventListener("keydown", this.handleInputKeydown.bind(this));
 		this.inputEl.addEventListener("input", this.handleInputChange.bind(this));
 		this.sendBtnEl.addEventListener("click", () => this.sendMessage());
+
+		// Paste handler for images
+		this.inputEl.addEventListener("paste", (e) => this.handlePaste(e));
+
+		// Drag & drop handlers on input area
+		inputArea.addEventListener("dragenter", (e) => {
+			e.preventDefault();
+			this.dropOverlayEl?.removeClass("hidden");
+		});
+		inputArea.addEventListener("dragover", (e) => {
+			e.preventDefault();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+		});
+		inputArea.addEventListener("dragleave", (e) => {
+			const rect = inputArea.getBoundingClientRect();
+			if (
+				e.clientX <= rect.left ||
+				e.clientX >= rect.right ||
+				e.clientY <= rect.top ||
+				e.clientY >= rect.bottom
+			) {
+				this.dropOverlayEl?.addClass("hidden");
+			}
+		});
+		inputArea.addEventListener("drop", (e) => {
+			e.preventDefault();
+			this.dropOverlayEl?.addClass("hidden");
+			if (e.dataTransfer?.files) {
+				this.handleFileList(e.dataTransfer.files);
+			}
+		});
 	}
 
 	async onClose(): Promise<void> {
@@ -257,7 +386,7 @@ export class ChatView extends ItemView {
 	// Public API — send handler & user messages
 	// =============================================================
 
-	setSendHandler(handler: (message: string) => void): void {
+	setSendHandler(handler: (message: string, attachments?: FileAttachment[]) => void): void {
 		this.onSendMessage = handler;
 	}
 
@@ -273,7 +402,8 @@ export class ChatView extends ItemView {
 		if (el) {
 			el.toggleClass("hidden", !streaming);
 		}
-		this.sendBtnEl.disabled = streaming;
+		this.sendBtnEl.toggleClass("hidden", streaming);
+		this.stopBtnEl?.toggleClass("hidden", !streaming);
 	}
 
 	clearMessages(): void {
@@ -318,6 +448,52 @@ export class ChatView extends ItemView {
 			this.fileIndicatorEl.textContent = "";
 			this.fileIndicatorEl.style.display = "none";
 		}
+	}
+
+	// =============================================================
+	// Public API — conversation management
+	// =============================================================
+
+	setNewChatHandler(handler: () => void): void {
+		this.onNewChat = handler;
+	}
+
+	setSwitchConversationHandler(handler: (id: string) => void): void {
+		this.onSwitchConversation = handler;
+	}
+
+	setDeleteConversationHandler(handler: (id: string) => void): void {
+		this.onDeleteConversation = handler;
+	}
+
+	setRenameConversationHandler(handler: (id: string, title: string) => void): void {
+		this.onRenameConversation = handler;
+	}
+
+	setConversations(conversations: ConversationSummary[]): void {
+		this.conversations = conversations;
+		this.renderConversationList();
+	}
+
+	setActiveConversationId(id: string | null): void {
+		this.activeConversationId = id;
+		this.renderConversationList();
+	}
+
+	// =============================================================
+	// Public API — message operations
+	// =============================================================
+
+	setStopHandler(handler: () => void): void {
+		this.onStopGeneration = handler;
+	}
+
+	setEditAndResendHandler(handler: (messageIndex: number, newContent: string) => void): void {
+		this.onEditAndResend = handler;
+	}
+
+	setRegenerateHandler(handler: () => void): void {
+		this.onRegenerateResponse = handler;
 	}
 
 	// =============================================================
@@ -489,6 +665,37 @@ export class ChatView extends ItemView {
 			}
 		}
 
+		// Add assistant message actions (copy + regenerate)
+		if (this.currentTurnEl) {
+			const actionsEl = this.currentTurnEl.createDiv({
+				cls: "claude-msg-actions claude-msg-actions-assistant",
+			});
+
+			const copyBtn = actionsEl.createEl("button", {
+				cls: "claude-msg-action-btn",
+				attr: { "aria-label": "Copy response" },
+			});
+			setIcon(copyBtn, "copy");
+			const responseText = this.textBuffer;
+			copyBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				this.copyToClipboard(responseText, copyBtn);
+			});
+
+			const regenBtn = actionsEl.createEl("button", {
+				cls: "claude-msg-action-btn",
+				attr: { "aria-label": "Regenerate response" },
+			});
+			setIcon(regenBtn, "refresh-cw");
+			regenBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				if (this.onRegenerateResponse) this.onRegenerateResponse();
+			});
+
+			// Add copy buttons to code blocks
+			this.addCodeBlockCopyButtons(this.currentTurnEl);
+		}
+
 		this.scrollToBottom();
 	}
 
@@ -608,13 +815,446 @@ export class ChatView extends ItemView {
 	}
 
 	// =============================================================
+	// Conversation panel
+	// =============================================================
+
+	private toggleConversationPanel(): void {
+		this.conversationPanelOpen = !this.conversationPanelOpen;
+		if (this.conversationListEl) {
+			this.conversationListEl.toggleClass("hidden", !this.conversationPanelOpen);
+		}
+		if (this.conversationPanelOpen) {
+			this.renderConversationList();
+			this.conversationSearchEl?.focus();
+		}
+	}
+
+	private renderConversationList(): void {
+		if (!this.conversationItemsEl) return;
+		this.conversationItemsEl.empty();
+
+		const query = this.conversationSearchEl?.value.toLowerCase() ?? "";
+		const filtered = query
+			? this.conversations.filter(
+					(c) =>
+						c.title.toLowerCase().includes(query) ||
+						c.lastMessagePreview.toLowerCase().includes(query)
+				)
+			: this.conversations;
+
+		if (filtered.length === 0) {
+			const emptyEl = this.conversationItemsEl.createDiv({
+				cls: "claude-conversation-empty",
+			});
+			emptyEl.setText(
+				query ? "No matching conversations" : "No conversations yet"
+			);
+			return;
+		}
+
+		for (const conv of filtered) {
+			const isActive = conv.id === this.activeConversationId;
+			const itemEl = this.conversationItemsEl.createDiv({
+				cls: `claude-conversation-item${isActive ? " active" : ""}`,
+			});
+
+			const titleEl = itemEl.createSpan({
+				cls: "claude-conversation-title",
+				text: conv.title,
+			});
+
+			itemEl.createSpan({
+				cls: "claude-conversation-time",
+				text: this.relativeTime(conv.updatedAt),
+			});
+
+			// Click to switch
+			itemEl.addEventListener("click", () => {
+				if (this.onSwitchConversation) {
+					this.onSwitchConversation(conv.id);
+				}
+				this.conversationPanelOpen = false;
+				this.conversationListEl?.addClass("hidden");
+			});
+
+			// Right-click context menu
+			itemEl.addEventListener("contextmenu", (e) => {
+				e.preventDefault();
+				this.showConversationContextMenu(e, conv);
+			});
+
+			// Double-click to rename
+			titleEl.addEventListener("dblclick", (e) => {
+				e.stopPropagation();
+				this.startInlineRename(titleEl, conv);
+			});
+		}
+	}
+
+	private showConversationContextMenu(
+		e: MouseEvent,
+		conv: ConversationSummary
+	): void {
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle("Rename")
+				.setIcon("pencil")
+				.onClick(() => {
+					const titleEl = this.conversationItemsEl?.querySelector(
+						`.claude-conversation-item.active .claude-conversation-title`
+					) as HTMLElement | null;
+					if (titleEl) this.startInlineRename(titleEl, conv);
+				})
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Delete")
+				.setIcon("trash")
+				.onClick(() => {
+					if (this.onDeleteConversation) {
+						this.onDeleteConversation(conv.id);
+					}
+				})
+		);
+		menu.showAtMouseEvent(e);
+	}
+
+	private startInlineRename(
+		titleEl: HTMLElement,
+		conv: ConversationSummary
+	): void {
+		const input = document.createElement("input");
+		input.type = "text";
+		input.value = conv.title;
+		input.className = "claude-conversation-rename-input";
+
+		const commit = () => {
+			const newTitle = input.value.trim();
+			if (newTitle && newTitle !== conv.title && this.onRenameConversation) {
+				this.onRenameConversation(conv.id, newTitle);
+			}
+			// Re-render will replace the input
+			this.renderConversationList();
+		};
+
+		input.addEventListener("blur", commit);
+		input.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				input.blur();
+			}
+			if (e.key === "Escape") {
+				e.preventDefault();
+				this.renderConversationList();
+			}
+		});
+
+		titleEl.replaceWith(input);
+		input.focus();
+		input.select();
+	}
+
+	private relativeTime(timestamp: number): string {
+		const diff = Date.now() - timestamp;
+		const minutes = Math.floor(diff / 60000);
+		if (minutes < 1) return "now";
+		if (minutes < 60) return `${minutes}m`;
+		const hours = Math.floor(minutes / 60);
+		if (hours < 24) return `${hours}h`;
+		const days = Math.floor(hours / 24);
+		if (days < 7) return `${days}d`;
+		return new Date(timestamp).toLocaleDateString();
+	}
+
+	// =============================================================
+	// Message operation helpers
+	// =============================================================
+
+	private copyToClipboard(text: string, btnEl: HTMLElement): void {
+		navigator.clipboard.writeText(text).then(() => {
+			const originalIcon = btnEl.innerHTML;
+			btnEl.empty();
+			setIcon(btnEl, "check");
+			btnEl.addClass("copied");
+			setTimeout(() => {
+				btnEl.empty();
+				btnEl.innerHTML = originalIcon;
+				btnEl.removeClass("copied");
+			}, 1500);
+		});
+	}
+
+	private startEditMessage(
+		wrapperEl: HTMLElement,
+		msg: ChatMessage,
+		msgIndex: number
+	): void {
+		const bubble = wrapperEl.querySelector(".claude-msg-bubble") as HTMLElement;
+		if (!bubble) return;
+
+		bubble.empty();
+		const textarea = bubble.createEl("textarea", {
+			cls: "claude-edit-textarea",
+			attr: { rows: "3" },
+		});
+		textarea.value = msg.content;
+
+		const btnRow = bubble.createDiv({ cls: "claude-edit-actions" });
+
+		const cancelBtn = btnRow.createEl("button", {
+			cls: "claude-edit-btn claude-edit-cancel",
+			text: "Cancel",
+		});
+		cancelBtn.addEventListener("click", () => {
+			bubble.empty();
+			const contentEl = bubble.createDiv({ cls: "claude-msg-content" });
+			contentEl.setText(msg.content);
+		});
+
+		const saveBtn = btnRow.createEl("button", {
+			cls: "claude-edit-btn claude-edit-save",
+			text: "Save & Send",
+		});
+		saveBtn.addEventListener("click", () => {
+			const newContent = textarea.value.trim();
+			if (newContent && this.onEditAndResend) {
+				this.onEditAndResend(msgIndex, newContent);
+			}
+		});
+
+		textarea.focus();
+	}
+
+	private addCodeBlockCopyButtons(container: HTMLElement): void {
+		const codeBlocks = container.querySelectorAll("pre > code");
+		codeBlocks.forEach((codeEl) => {
+			const preEl = codeEl.parentElement;
+			if (!preEl) return;
+
+			// Make pre relative for positioning
+			preEl.addClass("claude-code-block-wrapper");
+
+			const header = preEl.createDiv({ cls: "claude-code-block-header" });
+
+			// Extract language from class (e.g., "language-typescript")
+			const langClass = Array.from(codeEl.classList).find((c) =>
+				c.startsWith("language-")
+			);
+			if (langClass) {
+				header.createSpan({
+					cls: "claude-code-lang",
+					text: langClass.replace("language-", ""),
+				});
+			}
+
+			const copyBtn = header.createEl("button", {
+				cls: "claude-code-copy-btn",
+				attr: { "aria-label": "Copy code" },
+			});
+			setIcon(copyBtn, "copy");
+			copyBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				this.copyToClipboard(codeEl.textContent ?? "", copyBtn);
+			});
+
+			// Insert header before code content
+			preEl.insertBefore(header, preEl.firstChild);
+		});
+	}
+
+	// =============================================================
+	// File upload helpers
+	// =============================================================
+
+	private static readonly SUPPORTED_TYPES = new Set([
+		"image/png",
+		"image/jpeg",
+		"image/gif",
+		"image/webp",
+		"application/pdf",
+		"text/plain",
+		"text/markdown",
+		"text/csv",
+		"application/json",
+	]);
+
+	private static readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+	private openFilePicker(): void {
+		const input = document.createElement("input");
+		input.type = "file";
+		input.multiple = true;
+		input.accept =
+			"image/png,image/jpeg,image/gif,image/webp,application/pdf,.txt,.md,.csv,.json";
+		input.addEventListener("change", () => {
+			if (input.files) this.handleFileList(input.files);
+		});
+		input.click();
+	}
+
+	private handlePaste(e: ClipboardEvent): void {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+
+		for (let i = 0; i < items.length; i++) {
+			const item = items[i];
+			if (item.kind === "file") {
+				e.preventDefault();
+				const file = item.getAsFile();
+				if (file) this.addAttachmentFromFile(file);
+			}
+		}
+	}
+
+	private handleFileList(files: FileList): void {
+		for (let i = 0; i < files.length; i++) {
+			this.addAttachmentFromFile(files[i]);
+		}
+	}
+
+	private async addAttachmentFromFile(file: File): Promise<void> {
+		if (!ChatView.SUPPORTED_TYPES.has(file.type) && !this.isTextFile(file.name)) {
+			// Unsupported type — skip silently
+			return;
+		}
+
+		if (file.size > ChatView.MAX_FILE_SIZE) {
+			// Show brief warning in input area
+			const warn = this.contentEl.createDiv({ cls: "claude-upload-warn" });
+			warn.setText(`${file.name} exceeds 10MB limit`);
+			setTimeout(() => warn.remove(), 3000);
+			return;
+		}
+
+		const data = await file.arrayBuffer();
+		const attachment: FileAttachment = {
+			name: file.name,
+			type: file.type,
+			size: file.size,
+			data,
+		};
+
+		if (file.type.startsWith("image/")) {
+			attachment.previewUrl = URL.createObjectURL(file);
+		}
+
+		this.pendingAttachments.push(attachment);
+		this.renderAttachmentPreviews();
+	}
+
+	private isTextFile(name: string): boolean {
+		return /\.(txt|md|csv|json|log|xml|yaml|yml|toml)$/i.test(name);
+	}
+
+	private renderAttachmentPreviews(): void {
+		if (!this.attachmentPreviewEl) return;
+		this.attachmentPreviewEl.empty();
+
+		if (this.pendingAttachments.length === 0) {
+			this.attachmentPreviewEl.addClass("hidden");
+			return;
+		}
+
+		this.attachmentPreviewEl.removeClass("hidden");
+
+		this.pendingAttachments.forEach((att, idx) => {
+			const item = this.attachmentPreviewEl!.createDiv({
+				cls: "claude-attachment-item",
+			});
+
+			if (att.previewUrl) {
+				item.createEl("img", {
+					cls: "claude-attachment-thumb",
+					attr: { src: att.previewUrl, alt: att.name },
+				});
+			} else {
+				const iconEl = item.createSpan({ cls: "claude-attachment-icon" });
+				setIcon(iconEl, this.getFileIcon(att.type));
+			}
+
+			const info = item.createDiv({ cls: "claude-attachment-info" });
+			info.createSpan({ cls: "claude-attachment-name", text: att.name });
+			info.createSpan({
+				cls: "claude-attachment-size",
+				text: this.formatFileSize(att.size),
+			});
+
+			const removeBtn = item.createEl("button", {
+				cls: "claude-attachment-remove",
+				attr: { "aria-label": "Remove" },
+			});
+			setIcon(removeBtn, "x");
+			removeBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				this.removeAttachment(idx);
+			});
+		});
+	}
+
+	private removeAttachment(index: number): void {
+		const att = this.pendingAttachments[index];
+		if (att?.previewUrl) {
+			URL.revokeObjectURL(att.previewUrl);
+		}
+		this.pendingAttachments.splice(index, 1);
+		this.renderAttachmentPreviews();
+	}
+
+	private clearAttachments(): void {
+		for (const att of this.pendingAttachments) {
+			if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+		}
+		this.pendingAttachments = [];
+		this.renderAttachmentPreviews();
+	}
+
+	private getFileIcon(mimeType: string): string {
+		if (mimeType === "application/pdf") return "file-text";
+		if (mimeType.startsWith("image/")) return "image";
+		return "file";
+	}
+
+	private formatFileSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes}B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+	}
+
+	// =============================================================
 	// User messages
 	// =============================================================
 
 	private renderUserMessage(msg: ChatMessage): void {
+		const msgIndex = this.messages.indexOf(msg);
 		const wrapper = this.messageListEl.createDiv({
 			cls: "claude-msg claude-msg-user",
 		});
+
+		// Hover actions
+		const actionsEl = wrapper.createDiv({ cls: "claude-msg-actions" });
+
+		const copyBtn = actionsEl.createEl("button", {
+			cls: "claude-msg-action-btn",
+			attr: { "aria-label": "Copy message" },
+		});
+		setIcon(copyBtn, "copy");
+		copyBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			this.copyToClipboard(msg.content, copyBtn);
+		});
+
+		const editBtn = actionsEl.createEl("button", {
+			cls: "claude-msg-action-btn",
+			attr: { "aria-label": "Edit message" },
+		});
+		setIcon(editBtn, "pencil");
+		editBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			this.startEditMessage(wrapper, msg, msgIndex);
+		});
+
 		const bubble = wrapper.createDiv({ cls: "claude-msg-bubble" });
 		const contentEl = bubble.createDiv({ cls: "claude-msg-content" });
 		contentEl.setText(msg.content);
@@ -626,23 +1266,32 @@ export class ChatView extends ItemView {
 
 	private sendMessage(): void {
 		const text = this.inputEl.value.trim();
-		if (!text || this.isStreaming) return;
+		if (!text && this.pendingAttachments.length === 0) return;
+		if (this.isStreaming) return;
 
 		// Add to history
-		this.commandHistory.push(text);
-		this.historyIndex = -1;
+		if (text) {
+			this.commandHistory.push(text);
+			this.historyIndex = -1;
+		}
 
 		// Add user message
-		this.addMessage({ role: "user", content: text, timestamp: Date.now() });
+		this.addMessage({ role: "user", content: text || "(attached files)", timestamp: Date.now() });
 
-		// Clear input and reset height
+		// Grab attachments before clearing
+		const attachments = this.pendingAttachments.length > 0
+			? [...this.pendingAttachments]
+			: undefined;
+
+		// Clear input, attachments, and reset height
 		this.inputEl.value = "";
 		this.inputEl.style.height = "auto";
+		this.clearAttachments();
 		this.hideAutocomplete();
 
 		// Notify handler
 		if (this.onSendMessage) {
-			this.onSendMessage(text);
+			this.onSendMessage(text, attachments);
 		}
 	}
 

@@ -74,3 +74,22 @@ export class TFile {
   extension: string = "";
   vault: any;
 }
+
+export function setIcon(_el: any, _icon: string) {}
+
+export class Menu {
+  addItem(_cb: any) { return this; }
+  showAtMouseEvent(_event: any) {}
+  showAtPosition(_position: any) {}
+}
+
+export const MarkdownRenderer = {
+  render(_app: any, _markdown: string, el: any, _sourcePath: string, _component: any) {
+    if (el && typeof el.setText === "function") {
+      el.setText(_markdown);
+    } else if (el) {
+      el.textContent = _markdown;
+    }
+    return Promise.resolve();
+  },
+};

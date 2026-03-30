@@ -9,12 +9,15 @@ import {
   DEFAULT_SETTINGS,
 } from "./src/settings";
 import { discoverSkills } from "./src/slash-commands";
+import { ConversationStore, StoredMessage } from "./src/conversation-store";
 
 export default class ClaudeCodePlugin extends Plugin {
   settings: ClaudeCodeSettings = DEFAULT_SETTINGS;
   private claudeService: ClaudeCodeService | null = null;
   private fileSyncService: FileSyncService | null = null;
   private mcpServer: ObsidianMcpServer | null = null;
+  private conversationStore: ConversationStore | null = null;
+  private activeConversationId: string | null = null;
   private currentSessionId: string | undefined;
   private activeFileContext: ActiveFileContext | null = null;
 
@@ -42,6 +45,14 @@ export default class ClaudeCodePlugin extends Plugin {
     });
     this.fileSyncService = new FileSyncService(this.app);
 
+    // Initialize conversation store
+    try {
+      this.conversationStore = new ConversationStore(this.app);
+      await this.conversationStore.initialize();
+    } catch (err) {
+      console.error("[claude-code] Failed to initialize conversation store:", err);
+    }
+
     // Register the chat view
     this.registerView(VIEW_TYPE_CLAUDE_CHAT, (leaf) => {
       const view = new ChatView(leaf);
@@ -49,6 +60,18 @@ export default class ClaudeCodePlugin extends Plugin {
       view.setModel(this.settings.model);
       view.setSlashCommands(discoverSkills());
       view.setModelChangeHandler((model) => this.handleModelChange(model));
+
+      // Conversation management handlers
+      view.setNewChatHandler(() => this.handleNewChat());
+      view.setSwitchConversationHandler((id) => this.handleSwitchConversation(id));
+      view.setDeleteConversationHandler((id) => this.handleDeleteConversation(id));
+      view.setRenameConversationHandler((id, title) => this.handleRenameConversation(id, title));
+
+      // Message operation handlers
+      view.setStopHandler(() => this.claudeService?.cancelRequest());
+      view.setEditAndResendHandler((idx, content) => this.handleEditAndResend(idx, content));
+      view.setRegenerateHandler(() => this.handleRegenerateResponse());
+
       if (this.activeFileContext) {
         view.setActiveFileContext({
           file: this.activeFileContext.filePath,
@@ -56,6 +79,13 @@ export default class ClaudeCodePlugin extends Plugin {
           selection: this.activeFileContext.selection,
         });
       }
+
+      // Load conversation list and restore last active
+      this.refreshConversationList(view);
+      if (this.activeConversationId) {
+        this.loadConversationIntoView(this.activeConversationId, view);
+      }
+
       return view;
     });
 
@@ -74,12 +104,7 @@ export default class ClaudeCodePlugin extends Plugin {
     this.addCommand({
       id: "new-session",
       name: "New Chat Session",
-      callback: () => {
-        this.currentSessionId = undefined;
-        const view = this.getChatView();
-        if (view) view.clearMessages();
-        new Notice("Started new Claude Code session");
-      },
+      callback: () => this.handleNewChat(),
     });
 
     this.addCommand({
@@ -276,8 +301,24 @@ export default class ClaudeCodePlugin extends Plugin {
       return;
     }
 
+    // Ensure we have an active conversation
+    await this.ensureActiveConversation(message);
+
+    // Save user message to store
+    if (this.conversationStore && this.activeConversationId) {
+      await this.conversationStore.addMessage(this.activeConversationId, {
+        role: "user",
+        content: message,
+        timestamp: Date.now(),
+      });
+    }
+
     view.setStreaming(true);
     view.startAssistantTurn();
+
+    let assistantText = "";
+    let thinkingText = "";
+    const toolBlocks: Array<{ toolId: string; toolName: string; input: string; isComplete: boolean }> = [];
 
     try {
       const enrichedMessage = this.enrichWithFileContext(message);
@@ -299,20 +340,29 @@ export default class ClaudeCodePlugin extends Plugin {
       for await (const event of stream) {
         switch (event.kind) {
           case "text_delta":
+            assistantText += event.text;
             view.appendTextDelta(event.text);
             break;
           case "thinking_delta":
+            thinkingText += event.thinking;
             view.appendThinking(event.thinking);
             break;
           case "tool_start":
+            toolBlocks.push({ toolId: event.toolId, toolName: event.toolName, input: "", isComplete: false });
             view.addToolBlock(event.toolId, event.toolName);
             break;
-          case "tool_input_delta":
+          case "tool_input_delta": {
+            const tb = toolBlocks.find((t) => t.toolId === event.toolId);
+            if (tb) tb.input += event.partialJson;
             view.appendToolInput(event.toolId, event.partialJson);
             break;
-          case "tool_end":
+          }
+          case "tool_end": {
+            const tb = toolBlocks.find((t) => t.toolId === event.toolId);
+            if (tb) tb.isComplete = true;
             view.finalizeToolBlock(event.toolId);
             break;
+          }
           case "result":
             this.currentSessionId = event.sessionId;
             view.showResultInfo(event.costUsd, event.durationMs, event.numTurns);
@@ -336,6 +386,176 @@ export default class ClaudeCodePlugin extends Plugin {
     } finally {
       view.finishAssistantTurn();
       view.setStreaming(false);
+
+      // Save assistant message to store
+      if (this.conversationStore && this.activeConversationId && assistantText) {
+        const storedMsg: StoredMessage = {
+          role: "assistant",
+          content: assistantText,
+          timestamp: Date.now(),
+          thinkingContent: thinkingText || undefined,
+          toolBlocks: toolBlocks.length > 0 ? toolBlocks : undefined,
+        };
+        await this.conversationStore.addMessage(this.activeConversationId, storedMsg);
+
+        // Update session ID
+        if (this.currentSessionId) {
+          await this.conversationStore.updateSessionId(
+            this.activeConversationId,
+            this.currentSessionId
+          );
+        }
+      }
+
+      this.refreshConversationList();
     }
+  }
+
+  // --- Conversation management ---
+
+  private async ensureActiveConversation(firstMessage?: string): Promise<void> {
+    if (this.activeConversationId && this.conversationStore?.get(this.activeConversationId)) {
+      return;
+    }
+    if (!this.conversationStore) return;
+
+    const conv = await this.conversationStore.create(firstMessage);
+    this.activeConversationId = conv.id;
+    this.currentSessionId = undefined;
+
+    const view = this.getChatView();
+    if (view) view.setActiveConversationId(conv.id);
+  }
+
+  private async handleNewChat(): Promise<void> {
+    this.currentSessionId = undefined;
+    this.activeConversationId = null;
+
+    const view = this.getChatView();
+    if (view) {
+      view.clearMessages();
+      view.setActiveConversationId(null);
+    }
+
+    this.refreshConversationList();
+    new Notice("Started new chat");
+  }
+
+  private async handleSwitchConversation(id: string): Promise<void> {
+    if (id === this.activeConversationId) return;
+    const view = this.getChatView();
+    if (!view) return;
+
+    this.loadConversationIntoView(id, view);
+  }
+
+  private loadConversationIntoView(id: string, view: ChatView): void {
+    const conv = this.conversationStore?.get(id);
+    if (!conv) return;
+
+    this.activeConversationId = id;
+    this.currentSessionId = conv.sessionId;
+
+    view.clearMessages();
+    view.setActiveConversationId(id);
+
+    // Replay messages into the view
+    for (const msg of conv.messages) {
+      if (msg.role === "user") {
+        view.addMessage({
+          role: "user",
+          content: msg.content,
+          timestamp: msg.timestamp,
+        });
+      } else {
+        // Render assistant message as a completed turn
+        view.startAssistantTurn();
+        if (msg.thinkingContent) {
+          view.appendThinking(msg.thinkingContent);
+        }
+        if (msg.toolBlocks) {
+          for (const tb of msg.toolBlocks) {
+            view.addToolBlock(tb.toolId, tb.toolName);
+            if (tb.input) view.appendToolInput(tb.toolId, tb.input);
+            if (tb.isComplete) view.finalizeToolBlock(tb.toolId);
+          }
+        }
+        if (msg.content) {
+          view.appendTextDelta(msg.content);
+        }
+        view.finishAssistantTurn();
+      }
+    }
+  }
+
+  private async handleDeleteConversation(id: string): Promise<void> {
+    if (!this.conversationStore) return;
+    await this.conversationStore.delete(id);
+
+    if (id === this.activeConversationId) {
+      // Switch to the most recent conversation or start fresh
+      const list = this.conversationStore.listAll();
+      if (list.length > 0) {
+        this.handleSwitchConversation(list[0].id);
+      } else {
+        this.handleNewChat();
+      }
+    }
+
+    this.refreshConversationList();
+  }
+
+  private async handleRenameConversation(id: string, title: string): Promise<void> {
+    if (!this.conversationStore) return;
+    await this.conversationStore.rename(id, title);
+    this.refreshConversationList();
+  }
+
+  private async handleEditAndResend(messageIndex: number, newContent: string): Promise<void> {
+    if (!this.conversationStore || !this.activeConversationId) return;
+
+    // Truncate conversation after this message
+    await this.conversationStore.truncateAfter(this.activeConversationId, messageIndex);
+
+    // Reset session — edited message changes context
+    this.currentSessionId = undefined;
+
+    // Reload the truncated conversation and resend
+    const view = this.getChatView();
+    if (view) {
+      this.loadConversationIntoView(this.activeConversationId, view);
+      this.handleUserMessage(newContent);
+    }
+  }
+
+  private async handleRegenerateResponse(): Promise<void> {
+    if (!this.conversationStore || !this.activeConversationId) return;
+
+    const conv = this.conversationStore.get(this.activeConversationId);
+    if (!conv || conv.messages.length === 0) return;
+
+    // Remove last assistant message
+    await this.conversationStore.removeLastAssistantMessage(this.activeConversationId);
+
+    // Find last user message
+    const updated = this.conversationStore.get(this.activeConversationId);
+    if (!updated) return;
+    const lastUserMsg = [...updated.messages].reverse().find((m) => m.role === "user");
+    if (!lastUserMsg) return;
+
+    // Reset session and resend
+    this.currentSessionId = undefined;
+    const view = this.getChatView();
+    if (view) {
+      this.loadConversationIntoView(this.activeConversationId, view);
+      this.handleUserMessage(lastUserMsg.content);
+    }
+  }
+
+  private refreshConversationList(view?: ChatView): void {
+    const v = view ?? this.getChatView();
+    if (!v || !this.conversationStore) return;
+    v.setConversations(this.conversationStore.listAll());
+    v.setActiveConversationId(this.activeConversationId);
   }
 }
