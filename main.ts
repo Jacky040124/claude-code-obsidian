@@ -1,5 +1,5 @@
 import { MarkdownView, Notice, Plugin } from "obsidian";
-import { ActiveFileContext, ClaudeCodeService, InternalEvent } from "./src/claude-service";
+import { ActiveFileContext, ClaudeCodeService } from "./src/claude-service";
 import { ChatView, VIEW_TYPE_CLAUDE_CHAT } from "./src/chat-view";
 import { FileSyncService } from "./src/file-sync";
 import { ObsidianMcpServer } from "./src/mcp-server";
@@ -318,7 +318,7 @@ export default class ClaudeCodePlugin extends Plugin {
 
     let assistantText = "";
     let thinkingText = "";
-    const toolBlocks: Array<{ toolId: string; toolName: string; input: string; isComplete: boolean }> = [];
+    const toolBlockMap = new Map<string, { toolId: string; toolName: string; input: string; isComplete: boolean }>();
 
     try {
       const enrichedMessage = this.enrichWithFileContext(message);
@@ -348,17 +348,17 @@ export default class ClaudeCodePlugin extends Plugin {
             view.appendThinking(event.thinking);
             break;
           case "tool_start":
-            toolBlocks.push({ toolId: event.toolId, toolName: event.toolName, input: "", isComplete: false });
+            toolBlockMap.set(event.toolId, { toolId: event.toolId, toolName: event.toolName, input: "", isComplete: false });
             view.addToolBlock(event.toolId, event.toolName);
             break;
           case "tool_input_delta": {
-            const tb = toolBlocks.find((t) => t.toolId === event.toolId);
+            const tb = toolBlockMap.get(event.toolId);
             if (tb) tb.input += event.partialJson;
             view.appendToolInput(event.toolId, event.partialJson);
             break;
           }
           case "tool_end": {
-            const tb = toolBlocks.find((t) => t.toolId === event.toolId);
+            const tb = toolBlockMap.get(event.toolId);
             if (tb) tb.isComplete = true;
             view.finalizeToolBlock(event.toolId);
             break;
@@ -394,7 +394,7 @@ export default class ClaudeCodePlugin extends Plugin {
           content: assistantText,
           timestamp: Date.now(),
           thinkingContent: thinkingText || undefined,
-          toolBlocks: toolBlocks.length > 0 ? toolBlocks : undefined,
+          toolBlocks: toolBlockMap.size > 0 ? Array.from(toolBlockMap.values()) : undefined,
         };
         await this.conversationStore.addMessage(this.activeConversationId, storedMsg);
 
