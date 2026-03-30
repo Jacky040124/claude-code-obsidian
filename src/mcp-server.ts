@@ -55,6 +55,18 @@ class SseSession {
 }
 
 // ---------------------------------------------------------------
+// MCP tool result helpers
+// ---------------------------------------------------------------
+
+function mcpText(text: string) {
+  return { content: [{ type: "text", text }] };
+}
+
+function mcpError(text: string) {
+  return { content: [{ type: "text", text }], isError: true };
+}
+
+// ---------------------------------------------------------------
 // Main MCP server class
 // ---------------------------------------------------------------
 
@@ -264,10 +276,7 @@ export class ObsidianMcpServer {
     const args = (params?.arguments ?? {}) as Record<string, unknown>;
 
     if (!name) {
-      return {
-        content: [{ type: "text", text: "Missing tool name" }],
-        isError: true,
-      };
+      return mcpError("Missing tool name");
     }
 
     try {
@@ -283,14 +292,11 @@ export class ObsidianMcpServer {
         case "obsidian_create":
           return await this.toolCreate(args as { file_path: string; content: string });
         default:
-          return {
-            content: [{ type: "text", text: `Unknown tool: ${name}` }],
-            isError: true,
-          };
+          return mcpError(`Unknown tool: ${name}`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
+      return mcpError(`Error: ${msg}`);
     }
   }
 
@@ -355,10 +361,7 @@ export class ObsidianMcpServer {
   private async toolReadActive() {
     const file = this.app.workspace.getActiveFile();
     if (!file) {
-      return {
-        content: [{ type: "text", text: "No active file open in Obsidian." }],
-        isError: true,
-      };
+      return mcpError("No active file open in Obsidian.");
     }
 
     const editorInfo = this.findEditorForFile(file.path);
@@ -378,7 +381,7 @@ export class ObsidianMcpServer {
     if (cache?.frontmatter) result.frontmatter = { ...cache.frontmatter };
     if (cache?.tags) result.tags = cache.tags.map((t) => t.tag);
 
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return mcpText(JSON.stringify(result, null, 2));
   }
 
   private async toolEdit(args: {
@@ -389,10 +392,7 @@ export class ObsidianMcpServer {
     const { file_path, old_string, new_string } = args;
     const file = this.app.vault.getAbstractFileByPath(file_path);
     if (!(file instanceof TFile)) {
-      return {
-        content: [{ type: "text", text: `File not found: ${file_path}` }],
-        isError: true,
-      };
+      return mcpError(`File not found: ${file_path}`);
     }
 
     // Editor-first strategy
@@ -402,16 +402,13 @@ export class ObsidianMcpServer {
       const content = editor.getValue();
       const idx = content.indexOf(old_string);
       if (idx === -1) {
-        return {
-          content: [{ type: "text", text: `old_string not found in ${file_path}` }],
-          isError: true,
-        };
+        return mcpError(`old_string not found in ${file_path}`);
       }
       const from = editor.offsetToPos(idx);
       const to = editor.offsetToPos(idx + old_string.length);
       editor.replaceRange(new_string, from, to);
       new Notice(`Edited: ${file_path}`);
-      return { content: [{ type: "text", text: `Edited ${file_path} (via editor)` }] };
+      return mcpText(`Edited ${file_path} (via editor)`);
     }
 
     // Fallback: vault.process for closed files
@@ -425,14 +422,11 @@ export class ObsidianMcpServer {
     });
 
     if (!found) {
-      return {
-        content: [{ type: "text", text: `old_string not found in ${file_path}` }],
-        isError: true,
-      };
+      return mcpError(`old_string not found in ${file_path}`);
     }
 
     new Notice(`Edited: ${file_path}`);
-    return { content: [{ type: "text", text: `Edited ${file_path} (via vault)` }] };
+    return mcpText(`Edited ${file_path} (via vault)`);
   }
 
   private async toolWrite(args: { file_path: string; content: string }) {
@@ -444,42 +438,32 @@ export class ObsidianMcpServer {
       if (editorInfo) {
         editorInfo.editor.setValue(content);
         new Notice(`Written: ${file_path}`);
-        return {
-          content: [{ type: "text", text: `Written ${file_path} (via editor)` }],
-        };
+        return mcpText(`Written ${file_path} (via editor)`);
       }
 
       await this.app.vault.modify(file, content);
       new Notice(`Written: ${file_path}`);
-      return { content: [{ type: "text", text: `Written ${file_path} (via vault)` }] };
+      return mcpText(`Written ${file_path} (via vault)`);
     }
 
     // File doesn't exist — create it
     await this.ensureFolder(file_path);
     await this.app.vault.create(file_path, content);
     new Notice(`Created: ${file_path}`);
-    return { content: [{ type: "text", text: `Created ${file_path}` }] };
+    return mcpText(`Created ${file_path}`);
   }
 
   private async toolCreate(args: { file_path: string; content: string }) {
     const { file_path, content } = args;
     const existing = this.app.vault.getAbstractFileByPath(file_path);
     if (existing) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `File already exists: ${file_path}. Use obsidian_write to overwrite.`,
-          },
-        ],
-        isError: true,
-      };
+      return mcpError(`File already exists: ${file_path}. Use obsidian_write to overwrite.`);
     }
 
     await this.ensureFolder(file_path);
     await this.app.vault.create(file_path, content);
     new Notice(`Created: ${file_path}`);
-    return { content: [{ type: "text", text: `Created ${file_path}` }] };
+    return mcpText(`Created ${file_path}`);
   }
 
   // ---------------------------------------------------------------
