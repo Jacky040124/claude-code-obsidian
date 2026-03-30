@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-claude-code",
+  "name": "Claude Code",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "Wraps Claude Code CLI as an AI runtime for Obsidian — sidebar chat, note editing, and multi-note refactoring.",
+  "author": "Jacky Zhong",
+  "isDesktopOnly": true
+}

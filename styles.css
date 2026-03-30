@@ -1,0 +1,672 @@
+/* =============================================
+   Claude Code Obsidian Plugin - Styles
+   Claude brand theme with light/dark support
+   ============================================= */
+
+/* --- Claude Theme Variables --- */
+
+.claude-chat-container {
+	--claude-bg: #F5F5F0;
+	--claude-surface: #FFFFFF;
+	--claude-text: #1A1A18;
+	--claude-text-muted: #6B6A68;
+	--claude-accent: #AE5630;
+	--claude-accent-hover: #C4633A;
+	--claude-user-bubble: #DDD9CE;
+	--claude-border: rgba(0, 0, 0, 0.08);
+}
+
+.theme-dark .claude-chat-container {
+	--claude-bg: #2B2A27;
+	--claude-surface: #1F1E1B;
+	--claude-text: #EEEEEE;
+	--claude-text-muted: #9A9893;
+	--claude-user-bubble: #393937;
+	--claude-border: rgba(255, 255, 255, 0.08);
+}
+
+/* --- Chat Container --- */
+
+.claude-chat-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	background-color: var(--claude-bg);
+	color: var(--claude-text);
+}
+
+/* --- Message List --- */
+
+.claude-chat-messages {
+	flex: 1;
+	overflow-y: auto;
+	padding: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* --- Message Layout --- */
+
+.claude-msg {
+	display: flex;
+	max-width: 100%;
+}
+
+.claude-msg-user {
+	justify-content: flex-end;
+}
+
+.claude-msg-assistant {
+	justify-content: flex-start;
+	background-color: transparent;
+	color: var(--claude-text);
+	border-radius: 0;
+	padding: 8px 0;
+	max-width: 100%;
+}
+
+.claude-turn-content {
+	flex: 1;
+	min-width: 0;
+}
+
+/* --- User Message Bubble --- */
+
+.claude-msg-bubble {
+	max-width: 85%;
+	padding: 8px 12px;
+	border-radius: 18px;
+	border-bottom-right-radius: 4px;
+	line-height: 1.5;
+	font-size: var(--font-ui-small);
+}
+
+.claude-msg-user .claude-msg-bubble {
+	background-color: var(--claude-user-bubble);
+	color: var(--claude-text);
+}
+
+/* --- Assistant Serif Text --- */
+
+.claude-serif {
+	font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+}
+
+/* --- Thinking Block --- */
+
+.claude-turn-thinking {
+	border-left: 3px solid var(--claude-accent);
+	padding: 4px 8px;
+	font-size: var(--font-ui-smaller);
+	color: var(--claude-text-muted);
+	cursor: pointer;
+	margin: 4px 0;
+}
+
+.claude-turn-thinking.active {
+	animation: claude-thinking-pulse 2s ease-in-out infinite;
+}
+
+@keyframes claude-thinking-pulse {
+	0%, 100% { border-left-color: var(--claude-accent); }
+	50% { border-left-color: transparent; }
+}
+
+.claude-thinking-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--claude-text-muted);
+	user-select: none;
+}
+
+.claude-thinking-content {
+	max-height: 0;
+	overflow: hidden;
+	transition: max-height 0.2s ease;
+}
+
+.claude-turn-thinking.expanded .claude-thinking-content {
+	max-height: 500px;
+	overflow-y: auto;
+}
+
+/* --- Streaming Text Block --- */
+
+.claude-turn-text {
+	font-size: var(--font-ui-small);
+	line-height: 1.6;
+	color: var(--claude-text);
+}
+
+.claude-turn-text p {
+	margin: 0 0 6px 0;
+}
+
+.claude-turn-text p:last-child {
+	margin-bottom: 0;
+}
+
+.claude-turn-text pre {
+	background-color: var(--claude-surface);
+	border: 1px solid var(--claude-border);
+	border-radius: 6px;
+	padding: 8px;
+	overflow-x: auto;
+	margin: 6px 0;
+}
+
+.claude-turn-text code {
+	font-family: var(--font-monospace);
+	font-size: var(--font-smaller);
+}
+
+.claude-turn-text :not(pre) > code {
+	background-color: var(--claude-surface);
+	padding: 2px 4px;
+	border-radius: 3px;
+}
+
+/* --- Tool Block --- */
+
+.claude-tool-block {
+	margin: 6px 0;
+	border: 1px solid var(--claude-border);
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.claude-tool-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	cursor: pointer;
+	font-size: var(--font-ui-smaller);
+	user-select: none;
+}
+
+.claude-tool-header:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.claude-tool-icon {
+	display: flex;
+	align-items: center;
+	color: var(--claude-accent);
+}
+
+.claude-tool-icon svg {
+	width: 12px;
+	height: 12px;
+}
+
+.claude-tool-icon.running {
+	color: var(--claude-accent);
+	animation: claude-spin 1s linear infinite;
+}
+
+.claude-tool-icon.done {
+	color: var(--color-green);
+}
+
+.claude-tool-icon.error {
+	color: var(--color-red);
+}
+
+.claude-tool-name {
+	font-family: var(--font-monospace);
+}
+
+.claude-tool-args-summary {
+	color: var(--claude-text-muted);
+	font-family: var(--font-monospace);
+	font-size: var(--font-smallest);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+}
+
+.claude-tool-status {
+	display: flex;
+	align-items: center;
+	margin-left: auto;
+}
+
+.claude-tool-body {
+	max-height: 0;
+	overflow: hidden;
+	transition: max-height 0.2s ease;
+}
+
+.claude-tool-block.expanded .claude-tool-body {
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.claude-tool-body pre {
+	margin: 0;
+	padding: 8px 10px;
+	font-size: var(--font-smallest);
+	white-space: pre-wrap;
+	word-break: break-all;
+	background-color: var(--claude-surface);
+}
+
+/* --- Vault (MCP) Tool Block --- */
+
+.claude-tool-vault {
+	border-color: var(--color-purple);
+	border-left: 3px solid var(--color-purple);
+}
+
+.claude-tool-vault .claude-tool-icon {
+	color: var(--color-purple);
+}
+
+.claude-tool-vault .claude-tool-icon.done {
+	color: var(--color-green);
+}
+
+.claude-tool-vault .claude-tool-name {
+	color: var(--color-purple);
+	font-family: var(--font-interface);
+}
+
+/* --- Result Info Footer --- */
+
+.claude-result-info {
+	display: flex;
+	gap: 12px;
+	padding: 4px 8px;
+	margin-top: 6px;
+	font-size: var(--font-smallest);
+	color: var(--claude-text-muted);
+	border-top: 1px solid var(--claude-border);
+}
+
+/* --- Error Display --- */
+
+.claude-msg-error {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	margin: 6px 0;
+	border-radius: 6px;
+	font-size: var(--font-ui-smaller);
+	background-color: rgba(var(--color-red-rgb), 0.1);
+	color: var(--color-red);
+}
+
+.claude-error-icon {
+	display: flex;
+	align-items: center;
+}
+
+.claude-error-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+@keyframes claude-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+/* --- Streaming Indicator --- */
+
+.claude-chat-streaming {
+	display: flex;
+	gap: 8px;
+	padding: 8px 16px;
+	align-items: center;
+}
+
+.claude-chat-streaming.hidden {
+	display: none;
+}
+
+.claude-streaming-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background-color: var(--claude-accent);
+	animation: claude-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.claude-streaming-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--claude-text-muted);
+}
+
+@keyframes claude-dot-pulse {
+	0%, 100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+	50% {
+		transform: scale(1.4);
+		opacity: 0.5;
+	}
+}
+
+/* --- Input Area --- */
+
+.claude-chat-input-area {
+	position: relative;
+	border-top: none;
+	padding: 8px 12px 12px;
+	background-color: var(--claude-bg);
+}
+
+/* Input box — unified container for textarea + toolbar */
+.claude-input-box {
+	border: 1px solid var(--claude-border);
+	border-radius: 16px;
+	background-color: var(--claude-surface);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.claude-input-box:focus-within {
+	border-color: var(--claude-accent);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 2px rgba(174, 86, 48, 0.15);
+}
+
+.claude-chat-input {
+	width: 100%;
+	resize: none;
+	border: none;
+	border-radius: 16px 16px 0 0;
+	padding: 10px 14px 4px;
+	font-size: var(--font-ui-small);
+	font-family: var(--font-interface);
+	background-color: transparent;
+	color: var(--claude-text);
+	line-height: 1.4;
+	min-height: 36px;
+	max-height: 150px;
+	overflow-y: auto;
+}
+
+.claude-chat-input:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.claude-chat-input::placeholder {
+	color: var(--claude-text-muted);
+}
+
+/* Toolbar inside the input box */
+.claude-input-toolbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 2px 8px 6px;
+}
+
+.claude-input-toolbar-left {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	flex: 1;
+}
+
+.claude-input-toolbar-right {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	position: relative;
+}
+
+.claude-file-indicator {
+	font-size: var(--font-smallest);
+	color: var(--claude-text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: default;
+	padding: 2px 4px;
+}
+
+.claude-chat-send-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	border-radius: 10px;
+	border: none;
+	background-color: var(--claude-accent);
+	color: white;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition: background-color 0.15s ease;
+}
+
+.claude-chat-send-btn:hover {
+	background-color: var(--claude-accent-hover);
+}
+
+.claude-chat-send-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.claude-chat-send-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* --- @File Autocomplete --- */
+
+.claude-autocomplete {
+	position: absolute;
+	bottom: 100%;
+	left: 12px;
+	right: 12px;
+	max-height: 200px;
+	overflow-y: auto;
+	background-color: var(--claude-surface);
+	border: 1px solid var(--claude-border);
+	border-radius: 8px;
+	box-shadow: var(--shadow-s);
+	z-index: 100;
+}
+
+.claude-autocomplete.hidden {
+	display: none;
+}
+
+.claude-autocomplete-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	cursor: pointer;
+	font-size: var(--font-ui-smaller);
+	color: var(--claude-text);
+}
+
+.claude-autocomplete-item:hover,
+.claude-autocomplete-item.active {
+	background-color: var(--background-modifier-hover);
+}
+
+.claude-autocomplete-icon {
+	display: flex;
+	align-items: center;
+	color: var(--claude-text-muted);
+}
+
+.claude-autocomplete-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.claude-autocomplete-path {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* --- Settings --- */
+
+.claude-settings-version {
+	padding: 8px 12px;
+	margin-bottom: 12px;
+	border-radius: 6px;
+	font-size: var(--font-ui-smaller);
+	color: var(--claude-text-muted);
+}
+
+.claude-settings-success {
+	background-color: rgba(var(--color-green-rgb), 0.1);
+	color: var(--color-green);
+}
+
+.claude-settings-error {
+	background-color: rgba(var(--color-red-rgb), 0.1);
+	color: var(--color-red);
+}
+
+/* --- Model Selector --- */
+
+.claude-model-selector {
+	color: var(--claude-text-muted);
+	cursor: pointer;
+	user-select: none;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: var(--font-smallest);
+	transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.claude-model-selector:hover {
+	color: var(--claude-accent);
+	background-color: var(--background-modifier-hover);
+}
+
+/* --- Model Dropdown --- */
+
+.claude-model-dropdown {
+	position: absolute;
+	bottom: 100%;
+	right: 0;
+	width: 220px;
+	background-color: var(--claude-surface);
+	border: 1px solid var(--claude-border);
+	border-radius: 8px;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+	z-index: 100;
+	opacity: 0;
+	transform: translateY(4px);
+	pointer-events: none;
+	transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.claude-model-dropdown.open {
+	opacity: 1;
+	transform: translateY(0);
+	pointer-events: auto;
+}
+
+.claude-model-option {
+	padding: 8px 12px;
+	cursor: pointer;
+	transition: background-color 0.1s ease;
+}
+
+.claude-model-option:first-child {
+	border-radius: 8px 8px 0 0;
+}
+
+.claude-model-option:last-child {
+	border-radius: 0 0 8px 8px;
+}
+
+.claude-model-option:hover,
+.claude-model-option.focused {
+	background-color: var(--background-modifier-hover);
+}
+
+.claude-model-option.active {
+	background-color: rgba(174, 86, 48, 0.08);
+}
+
+.theme-dark .claude-model-option.active {
+	background-color: rgba(196, 99, 58, 0.12);
+}
+
+.claude-model-option-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.claude-model-name {
+	font-weight: 500;
+	font-size: var(--font-ui-smaller);
+	color: var(--claude-text);
+}
+
+.claude-model-check {
+	color: var(--claude-accent);
+	font-size: var(--font-ui-smaller);
+}
+
+.claude-model-desc {
+	font-size: var(--font-smallest);
+	color: var(--claude-text-muted);
+	margin-top: 1px;
+}
+
+/* --- Slash Command Autocomplete --- */
+
+.claude-slash-autocomplete {
+	position: absolute;
+	bottom: 100%;
+	left: 12px;
+	right: 12px;
+	max-height: 200px;
+	overflow-y: auto;
+	background-color: var(--claude-surface);
+	border: 1px solid var(--claude-border);
+	border-radius: 8px;
+	box-shadow: var(--shadow-s);
+	z-index: 100;
+}
+
+.claude-slash-autocomplete.hidden {
+	display: none;
+}
+
+.claude-slash-autocomplete-item {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	padding: 6px 10px;
+	cursor: pointer;
+	font-size: var(--font-ui-smaller);
+}
+
+.claude-slash-autocomplete-item:hover,
+.claude-slash-autocomplete-item.active {
+	background-color: var(--background-modifier-hover);
+}
+
+.claude-slash-name {
+	color: var(--claude-accent);
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.claude-slash-desc {
+	color: var(--claude-text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
