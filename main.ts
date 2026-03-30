@@ -9,7 +9,7 @@ import {
   DEFAULT_SETTINGS,
 } from "./src/settings";
 import { discoverSkills } from "./src/slash-commands";
-import { ConversationStore, StoredMessage } from "./src/conversation-store";
+import { ConversationStore } from "./src/conversation-store";
 
 export default class ClaudeCodePlugin extends Plugin {
   settings: ClaudeCodeSettings = DEFAULT_SETTINGS;

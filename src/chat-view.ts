@@ -1,5 +1,4 @@
 import {
-	App,
 	ItemView,
 	MarkdownRenderer,
 	Menu,
