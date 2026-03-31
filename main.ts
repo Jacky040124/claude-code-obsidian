@@ -1,4 +1,4 @@
-import { Editor, MarkdownView, Notice, Plugin, TFile } from "obsidian";
+import { Editor, ItemView, MarkdownView, Notice, Plugin, TFile } from "obsidian";
 import { ActiveFileContext, ClaudeCodeService } from "./src/claude-service";
 import { ChatView, VIEW_TYPE_CLAUDE_CHAT } from "./src/chat-view";
 import { FileSyncService } from "./src/file-sync";
@@ -32,7 +32,7 @@ export default class ClaudeCodePlugin extends Plugin {
       mcpPort = await this.mcpServer.start();
     } catch (err) {
       console.error("[claude-code] Failed to start MCP server:", err);
-      new Notice("Claude Code: MCP server failed to start");
+      new Notice("Claude Code: MCP server failed to start", 5000);
     }
 
     // Initialize services
@@ -56,21 +56,21 @@ export default class ClaudeCodePlugin extends Plugin {
     // Register the chat view
     this.registerView(VIEW_TYPE_CLAUDE_CHAT, (leaf) => {
       const view = new ChatView(leaf);
-      view.setSendHandler((msg) => this.handleUserMessage(msg));
+      view.setSendHandler((msg) => { void this.handleUserMessage(msg); });
       view.setModel(this.settings.model);
       view.setSlashCommands(discoverSkills());
-      view.setModelChangeHandler((model) => this.handleModelChange(model));
+      view.setModelChangeHandler((model) => { void this.handleModelChange(model); });
 
       // Conversation management handlers
       view.setNewChatHandler(() => this.handleNewChat());
       view.setSwitchConversationHandler((id) => this.handleSwitchConversation(id));
-      view.setDeleteConversationHandler((id) => this.handleDeleteConversation(id));
-      view.setRenameConversationHandler((id, title) => this.handleRenameConversation(id, title));
+      view.setDeleteConversationHandler((id) => { void this.handleDeleteConversation(id); });
+      view.setRenameConversationHandler((id, title) => { void this.handleRenameConversation(id, title); });
 
       // Message operation handlers
       view.setStopHandler(() => this.claudeService?.cancelRequest());
-      view.setEditAndResendHandler((idx, content) => this.handleEditAndResend(idx, content));
-      view.setRegenerateHandler(() => this.handleRegenerateResponse());
+      view.setEditAndResendHandler((idx, content) => { void this.handleEditAndResend(idx, content); });
+      view.setRegenerateHandler(() => { void this.handleRegenerateResponse(); });
 
       if (this.activeFileContext) {
         view.setActiveFileContext({
@@ -90,26 +90,26 @@ export default class ClaudeCodePlugin extends Plugin {
     });
 
     // Ribbon icon — opens chat sidebar
-    this.addRibbonIcon("message-square", "Open Claude Code Chat", () => {
-      this.activateChatView();
+    this.addRibbonIcon("message-square", "Open Claude Code chat", () => {
+      void this.activateChatView();
     });
 
     // Commands
     this.addCommand({
       id: "open-chat",
-      name: "Open Claude Code Chat",
-      callback: () => this.activateChatView(),
+      name: "Open chat",
+      callback: () => { void this.activateChatView(); },
     });
 
     this.addCommand({
       id: "new-session",
-      name: "New Chat Session",
-      callback: () => this.handleNewChat(),
+      name: "New chat session",
+      callback: () => { void this.handleNewChat(); },
     });
 
     this.addCommand({
       id: "edit-current-note",
-      name: "Edit Current Note with AI",
+      name: "Edit current note with AI",
       editorCallback: async (editor) => {
         const file = this.app.workspace.getActiveFile();
         if (!file) {
@@ -132,8 +132,8 @@ export default class ClaudeCodePlugin extends Plugin {
     );
     this.registerEvent(
       this.app.workspace.on("file-open", () => {
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (activeLeaf?.view?.getViewType() === VIEW_TYPE_CLAUDE_CHAT) return;
+        const activeView = this.app.workspace.getActiveViewOfType(ItemView);
+        if (activeView?.getViewType() === VIEW_TYPE_CLAUDE_CHAT) return;
         this.updateActiveContext();
       })
     );
@@ -166,12 +166,12 @@ export default class ClaudeCodePlugin extends Plugin {
     this.updateActiveContext();
   }
 
-  async onunload(): Promise<void> {
+  onunload(): void {
     this.claudeService?.cancelRequest();
     this.claudeService?.cleanupMcpConfig();
     this.claudeService = null;
     this.fileSyncService = null;
-    await this.mcpServer?.stop();
+    void this.mcpServer?.stop();
     this.mcpServer = null;
   }
 
@@ -206,7 +206,7 @@ export default class ClaudeCodePlugin extends Plugin {
   private async activateChatView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_CLAUDE_CHAT);
     if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
+      await this.app.workspace.revealLeaf(existing[0]);
       return;
     }
 
@@ -216,7 +216,7 @@ export default class ClaudeCodePlugin extends Plugin {
         type: VIEW_TYPE_CLAUDE_CHAT,
         active: true,
       });
-      this.app.workspace.revealLeaf(leaf);
+      await this.app.workspace.revealLeaf(leaf);
     }
   }
 
@@ -251,10 +251,10 @@ export default class ClaudeCodePlugin extends Plugin {
       if (sel) selection = sel;
       cursorLine = editor.getCursor().line + 1; // 1-based
     } else {
-      // Detect view type from the active leaf
-      const leaf = this.app.workspace.activeLeaf;
-      if (leaf) {
-        viewType = leaf.view.getViewType();
+      // Detect view type from the active view
+      const activeView = this.app.workspace.getActiveViewOfType(ItemView);
+      if (activeView) {
+        viewType = activeView.getViewType();
       }
     }
 
@@ -407,7 +407,7 @@ export default class ClaudeCodePlugin extends Plugin {
 
   private async runQuickAction(action: QuickAction, editor: Editor, selection: string): Promise<void> {
     if (!this.claudeService) {
-      new Notice("Claude Code service not available");
+      new Notice("Claude Code service not available.");
       return;
     }
 
@@ -598,7 +598,7 @@ export default class ClaudeCodePlugin extends Plugin {
     if (view) view.setActiveConversationId(conv.id);
   }
 
-  private async handleNewChat(): Promise<void> {
+  private handleNewChat(): void {
     this.currentSessionId = undefined;
     this.activeConversationId = null;
 
@@ -612,7 +612,7 @@ export default class ClaudeCodePlugin extends Plugin {
     new Notice("Started new chat");
   }
 
-  private async handleSwitchConversation(id: string): Promise<void> {
+  private handleSwitchConversation(id: string): void {
     if (id === this.activeConversationId) return;
     const view = this.getChatView();
     if (!view) return;
@@ -695,7 +695,7 @@ export default class ClaudeCodePlugin extends Plugin {
     const view = this.getChatView();
     if (view) {
       this.loadConversationIntoView(this.activeConversationId, view);
-      this.handleUserMessage(newContent);
+      void this.handleUserMessage(newContent);
     }
   }
 
@@ -717,7 +717,7 @@ export default class ClaudeCodePlugin extends Plugin {
     const view = this.getChatView();
     if (view) {
       this.loadConversationIntoView(this.activeConversationId, view);
-      this.handleUserMessage(lastUserMsg.content);
+      void this.handleUserMessage(lastUserMsg.content);
     }
   }
 

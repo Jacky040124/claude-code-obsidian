@@ -3,6 +3,15 @@
    Claude brand theme with light/dark support
    ============================================= */
 
+/* --- Icon sizing via CSS custom property --- */
+.svg-icon[style*="--icon-size"] {
+	width: var(--icon-size);
+	height: var(--icon-size);
+	min-width: var(--icon-size);
+	min-height: var(--icon-size);
+	flex-shrink: 0;
+}
+
 /* --- Claude Theme Variables --- */
 
 .claude-chat-container {
@@ -716,6 +725,7 @@
 	background-color: transparent;
 	color: var(--claude-text);
 	line-height: 1.4;
+	height: var(--input-height, auto);
 	min-height: 36px;
 	max-height: 150px;
 	overflow-y: auto;
@@ -1017,6 +1027,11 @@
 .claude-settings-error {
 	background-color: rgba(var(--color-red-rgb), 0.1);
 	color: var(--color-red);
+}
+
+.claude-settings-system-prompt {
+	width: 100%;
+	min-height: 80px;
 }
 
 /* --- Model Selector --- */

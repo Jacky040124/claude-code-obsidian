@@ -567,7 +567,7 @@ export class ObsidianMcpServer {
       for (const [source, targets] of Object.entries(
         this.app.metadataCache.resolvedLinks
       )) {
-        if ((targets as Record<string, number>)[args.linked_to] != null) {
+        if (targets[args.linked_to] != null) {
           sourcePaths.add(source);
         }
       }
@@ -582,7 +582,7 @@ export class ObsidianMcpServer {
       if (!targets) {
         candidates = [];
       } else {
-        const targetPaths = new Set(Object.keys(targets as Record<string, number>));
+        const targetPaths = new Set(Object.keys(targets));
         candidates = candidates.filter((f) => targetPaths.has(f.path));
       }
     }

@@ -75,10 +75,13 @@ function parseMcpToolName(rawName: string): McpToolInfo {
 // --- Tool arg summary helpers ---
 
 function summarizeToolArgs(toolName: string, json: Record<string, unknown>): string {
+	const str = (val: unknown, fallback: string): string =>
+		typeof val === "string" ? val : fallback;
+
 	// Check for MCP vault tools first
 	const mcpInfo = parseMcpToolName(toolName);
 	if (mcpInfo.isVaultOp) {
-		const filePath = json.file_path ?? json.path ?? "";
+		const filePath = str(json.file_path ?? json.path, "");
 		if (mcpInfo.action === "Reading active file") {
 			return "Reading active file";
 		}
@@ -87,22 +90,22 @@ function summarizeToolArgs(toolName: string, json: Record<string, unknown>): str
 	if (mcpInfo.isMcp) {
 		// Generic MCP tool — show action + first string arg if available
 		const firstArg = Object.values(json).find((v) => typeof v === "string");
-		return firstArg ? `${mcpInfo.action}: ${firstArg}` : mcpInfo.action;
+		return firstArg ? `${mcpInfo.action}: ${firstArg as string}` : mcpInfo.action;
 	}
 
 	switch (toolName) {
 		case "Read":
-			return `Reading ${json.file_path ?? json.path ?? "file"}`;
+			return `Reading ${str(json.file_path ?? json.path, "file")}`;
 		case "Bash":
-			return `Running: ${json.command ?? "command"}`;
+			return `Running: ${str(json.command, "command")}`;
 		case "Grep":
-			return `Searching: ${json.pattern ?? "pattern"}`;
+			return `Searching: ${str(json.pattern, "pattern")}`;
 		case "Edit":
-			return `Editing ${json.file_path ?? json.path ?? "file"}`;
+			return `Editing ${str(json.file_path ?? json.path, "file")}`;
 		case "Write":
-			return `Writing ${json.file_path ?? json.path ?? "file"}`;
+			return `Writing ${str(json.file_path ?? json.path, "file")}`;
 		case "Glob":
-			return `Globbing ${json.pattern ?? "pattern"}`;
+			return `Globbing ${str(json.pattern, "pattern")}`;
 		default:
 			return toolName;
 	}
@@ -207,7 +210,7 @@ export class ChatView extends ItemView {
 		return "message-square";
 	}
 
-	async onOpen(): Promise<void> {
+	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("claude-chat-container");
@@ -376,7 +379,7 @@ export class ChatView extends ItemView {
 		});
 	}
 
-	async onClose(): Promise<void> {
+	onClose(): void {
 		this.cancelPendingRafs();
 		this.closeModelDropdown();
 		this.clearAttachments();
@@ -444,10 +447,10 @@ export class ChatView extends ItemView {
 			const name = file.split("/").pop() ?? file;
 			this.fileIndicatorEl.textContent = `📎 ${name}`;
 			this.fileIndicatorEl.title = file;
-			this.fileIndicatorEl.style.display = "";
+			this.fileIndicatorEl.removeClass("hidden");
 		} else {
 			this.fileIndicatorEl.textContent = "";
-			this.fileIndicatorEl.style.display = "none";
+			this.fileIndicatorEl.addClass("hidden");
 		}
 	}
 
@@ -766,7 +769,7 @@ export class ChatView extends ItemView {
 		if (!this.textDirty || !this.currentTextEl) return;
 		this.textDirty = false;
 		this.currentTextEl.empty();
-		MarkdownRenderer.render(
+		void MarkdownRenderer.render(
 			this.app,
 			this.textBuffer,
 			this.currentTextEl,
@@ -780,7 +783,7 @@ export class ChatView extends ItemView {
 		if (!this.thinkingDirty || !this.currentThinkingContentEl) return;
 		this.thinkingDirty = false;
 		this.currentThinkingContentEl.empty();
-		MarkdownRenderer.render(
+		void MarkdownRenderer.render(
 			this.app,
 			this.thinkingBuffer,
 			this.currentThinkingContentEl,
@@ -974,7 +977,7 @@ export class ChatView extends ItemView {
 	// =============================================================
 
 	private copyToClipboard(text: string, btnEl: HTMLElement): void {
-		navigator.clipboard.writeText(text).then(() => {
+		void navigator.clipboard.writeText(text).then(() => {
 			btnEl.empty();
 			renderIcon(btnEl, "check");
 			btnEl.addClass("copied");
@@ -1015,7 +1018,7 @@ export class ChatView extends ItemView {
 
 		const saveBtn = btnRow.createEl("button", {
 			cls: "claude-edit-btn claude-edit-save",
-			text: "Save & Send",
+			text: "Save & send",
 		});
 		saveBtn.addEventListener("click", () => {
 			const newContent = textarea.value.trim();
@@ -1103,14 +1106,14 @@ export class ChatView extends ItemView {
 			if (item.kind === "file") {
 				e.preventDefault();
 				const file = item.getAsFile();
-				if (file) this.addAttachmentFromFile(file);
+				if (file) void this.addAttachmentFromFile(file);
 			}
 		}
 	}
 
 	private handleFileList(files: FileList): void {
 		for (let i = 0; i < files.length; i++) {
-			this.addAttachmentFromFile(files[i]);
+			void this.addAttachmentFromFile(files[i]);
 		}
 	}
 
@@ -1285,7 +1288,7 @@ export class ChatView extends ItemView {
 
 		// Clear input, attachments, and reset height
 		this.inputEl.value = "";
-		this.inputEl.style.height = "auto";
+		this.inputEl.setCssProps({ "--input-height": "auto" });
 		this.clearAttachments();
 		this.hideAutocomplete();
 
@@ -1481,8 +1484,8 @@ export class ChatView extends ItemView {
 
 	private handleInputChange(): void {
 		// Auto-resize textarea
-		this.inputEl.style.height = "auto";
-		this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 150) + "px";
+		this.inputEl.setCssProps({ "--input-height": "auto" });
+		this.inputEl.setCssProps({ "--input-height": Math.min(this.inputEl.scrollHeight, 150) + "px" });
 
 		const value = this.inputEl.value;
 		const cursorPos = this.inputEl.selectionStart;

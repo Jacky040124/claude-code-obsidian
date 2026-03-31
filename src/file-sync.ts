@@ -45,7 +45,7 @@ export class FileSyncService {
             const filePath = parsed.file_path as string | undefined;
             if (filePath) {
               this.pendingEdits.add(filePath);
-              this.refreshPendingEdits();
+              void this.refreshPendingEdits();
             }
           } catch {
             // Incomplete or malformed JSON — skip

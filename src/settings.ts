@@ -75,7 +75,7 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 			);
 
 		// --- Claude Binary ---
-		new Setting(containerEl).setName("Claude Code CLI").setHeading();
+		new Setting(containerEl).setName("CLI").setHeading();
 
 		new Setting(containerEl)
 			.setName("Binary path")
@@ -179,7 +179,7 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 			.setDesc("Additional instructions appended to every request.")
 			.addTextArea((text) =>
 				text
-					.setPlaceholder("e.g. Always respond in markdown. Keep answers concise.")
+					.setPlaceholder("e.g. always respond in markdown, keep answers concise.")
 					.setValue(this.plugin.settings.defaultSystemPrompt)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultSystemPrompt = value;
@@ -188,12 +188,11 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 			);
 
 		// Make the textarea larger
-		const systemPromptTextarea = containerEl.querySelector(
+		const systemPromptTextarea = containerEl.querySelector<HTMLTextAreaElement>(
 			".setting-item:last-child textarea"
-		) as HTMLTextAreaElement | null;
+		);
 		if (systemPromptTextarea) {
-			systemPromptTextarea.style.width = "100%";
-			systemPromptTextarea.style.minHeight = "80px";
+			systemPromptTextarea.addClass("claude-settings-system-prompt");
 		}
 
 		// --- Context ---
@@ -295,7 +294,7 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 		versionEl.setText("Checking...");
 
 		try {
-			const { exec } = require("child_process") as typeof import("child_process");
+			const { exec } = await import("child_process");
 			const path = this.plugin.settings.claudeBinaryPath || "claude";
 
 			exec(`${path} --version`, { timeout: 5000 }, (error, stdout, stderr) => {

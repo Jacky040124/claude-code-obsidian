@@ -1,6 +1,6 @@
 import { ChildProcess, spawn } from "child_process";
 import { EventEmitter } from "events";
-import { writeFileSync, mkdirSync, unlinkSync } from "fs";
+import { writeFileSync, unlinkSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { join } from "path";
 import { RawCliEvent, InternalEvent, StreamTranslator } from "./event-translator";
@@ -437,7 +437,7 @@ export class ClaudeCodeService extends EventEmitter {
         });
       }
 
-      if (error) {
+      if (error instanceof Error) {
         throw error;
       }
     } finally {
