@@ -90,7 +90,7 @@ function summarizeToolArgs(toolName: string, json: Record<string, unknown>): str
 	if (mcpInfo.isMcp) {
 		// Generic MCP tool — show action + first string arg if available
 		const firstArg = Object.values(json).find((v) => typeof v === "string");
-		return firstArg ? `${mcpInfo.action}: ${firstArg as string}` : mcpInfo.action;
+		return firstArg ? `${mcpInfo.action}: ${firstArg}` : mcpInfo.action;
 	}
 
 	switch (toolName) {
@@ -203,7 +203,7 @@ export class ChatView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Claude Code";
+		return "Claude code";
 	}
 
 	getIcon(): string {
@@ -292,7 +292,7 @@ export class ChatView extends ItemView {
 
 		this.inputEl = inputBox.createEl("textarea", {
 			cls: "claude-chat-input",
-			attr: { placeholder: "Reply to Claude...", rows: "1" },
+			attr: { placeholder: "Type a message...", rows: "1" },
 		});
 
 		// Toolbar inside the input box

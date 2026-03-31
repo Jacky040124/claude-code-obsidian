@@ -32,7 +32,7 @@ export default class ClaudeCodePlugin extends Plugin {
       mcpPort = await this.mcpServer.start();
     } catch (err) {
       console.error("[claude-code] Failed to start MCP server:", err);
-      new Notice("Claude Code: MCP server failed to start", 5000);
+      new Notice("Server failed to start", 5000);
     }
 
     // Initialize services
@@ -90,7 +90,7 @@ export default class ClaudeCodePlugin extends Plugin {
     });
 
     // Ribbon icon — opens chat sidebar
-    this.addRibbonIcon("message-square", "Open Claude Code chat", () => {
+    this.addRibbonIcon("message-square", "Open chat", () => {
       void this.activateChatView();
     });
 
@@ -119,7 +119,7 @@ export default class ClaudeCodePlugin extends Plugin {
         await this.activateChatView();
         const content = editor.getValue();
         const prompt = `Please review and suggest improvements for the note "${file.basename}":\n\n${content}`;
-        this.handleUserMessage(prompt);
+        void this.handleUserMessage(prompt);
       },
     });
 
@@ -407,7 +407,7 @@ export default class ClaudeCodePlugin extends Plugin {
 
   private async runQuickAction(action: QuickAction, editor: Editor, selection: string): Promise<void> {
     if (!this.claudeService) {
-      new Notice("Claude Code service not available.");
+      new Notice("Service not available");
       return;
     }
 
@@ -463,7 +463,7 @@ export default class ClaudeCodePlugin extends Plugin {
     const available = await this.claudeService.isAvailable();
     if (!available) {
       new Notice(
-        "Claude Code CLI not found. Install it or check the binary path in settings."
+        "CLI not found. Install it or check the binary path in settings."
       );
       return;
     }

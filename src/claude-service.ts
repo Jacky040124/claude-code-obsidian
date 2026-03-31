@@ -437,8 +437,8 @@ export class ClaudeCodeService extends EventEmitter {
         });
       }
 
-      if (error instanceof Error) {
-        throw error;
+      if (error) {
+        throw new Error(error.message);
       }
     } finally {
       if (timeoutId) {

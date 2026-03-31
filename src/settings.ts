@@ -60,8 +60,8 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Model").setHeading();
 
 		new Setting(containerEl)
-			.setName("Claude model")
-			.setDesc("Select which Claude model to use.")
+			.setName("Model")
+			.setDesc("Select which model to use.")
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption("sonnet", "Sonnet")
@@ -79,10 +79,10 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Binary path")
-			.setDesc("Path to the Claude Code CLI binary. Leave as 'claude' to use the system PATH.")
+			.setDesc("Path to the CLI binary. Leave as 'claude' to use the system path.")
 			.addText((text) =>
 				text
-					.setPlaceholder("claude")
+					.setPlaceholder("Claude")
 					.setValue(this.plugin.settings.claudeBinaryPath)
 					.onChange(async (value) => {
 						this.plugin.settings.claudeBinaryPath = value || "claude";
@@ -103,7 +103,7 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Allowed tools").setHeading();
 
 		new Setting(containerEl).setDesc(
-			"Select which tools Claude Code is allowed to use."
+			"Select which tools are allowed."
 		);
 
 		for (const tool of ALL_TOOLS) {
@@ -157,7 +157,7 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Response timeout")
-			.setDesc("Maximum time (seconds) to wait for a Claude response.")
+			.setDesc("Maximum time (seconds) to wait for a response.")
 			.addText((text) =>
 				text
 					.setPlaceholder("120")
@@ -179,7 +179,7 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 			.setDesc("Additional instructions appended to every request.")
 			.addTextArea((text) =>
 				text
-					.setPlaceholder("e.g. always respond in markdown, keep answers concise.")
+					.setPlaceholder("Always respond in markdown, keep answers concise")
 					.setValue(this.plugin.settings.defaultSystemPrompt)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultSystemPrompt = value;
@@ -304,7 +304,7 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 						versionEl.addClass("claude-settings-error");
 						versionEl.removeClass("claude-settings-success");
 						versionEl.setText(`Not found: ${error.message}`);
-						new Notice("Claude Code CLI not found at configured path.");
+						new Notice("CLI not found at configured path.");
 					} else {
 						versionEl.removeClass("claude-settings-error");
 						versionEl.addClass("claude-settings-success");
