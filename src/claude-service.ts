@@ -368,7 +368,7 @@ export class ClaudeCodeService extends EventEmitter {
           }
         } catch {
           // Malformed JSON line — skip gracefully
-          console.warn("[claude-service] Skipping malformed JSON line:", trimmed);
+          // Malformed JSON line — silently skip
         }
       }
     });
@@ -376,7 +376,7 @@ export class ClaudeCodeService extends EventEmitter {
     proc.stderr?.on("data", (chunk: Buffer) => {
       const msg = chunk.toString("utf-8").trim();
       if (msg) {
-        console.warn("[claude-service] stderr:", msg);
+        console.error("[claude-service] stderr:", msg);
       }
     });
 

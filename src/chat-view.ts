@@ -975,13 +975,12 @@ export class ChatView extends ItemView {
 
 	private copyToClipboard(text: string, btnEl: HTMLElement): void {
 		navigator.clipboard.writeText(text).then(() => {
-			const originalIcon = btnEl.innerHTML;
 			btnEl.empty();
 			renderIcon(btnEl, "check");
 			btnEl.addClass("copied");
 			setTimeout(() => {
 				btnEl.empty();
-				btnEl.innerHTML = originalIcon;
+				renderIcon(btnEl, "copy");
 				btnEl.removeClass("copied");
 			}, 1500);
 		});

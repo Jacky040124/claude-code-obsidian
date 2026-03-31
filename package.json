@@ -1,6 +1,6 @@
 {
-  "name": "obsidian-claude-code",
-  "version": "0.1.0",
+  "name": "claude-code",
+  "version": "1.0.0",
   "description": "Obsidian plugin that wraps Claude Code CLI as its AI runtime",
   "main": "main.js",
   "scripts": {

@@ -96,7 +96,6 @@ export class ObsidianMcpServer {
         if (addr && typeof addr !== "string") {
           this.port = addr.port;
         }
-        console.log(`[mcp-server] Listening on 127.0.0.1:${this.port}`);
         resolve(this.port);
       });
     });

@@ -73,7 +73,7 @@ export class FileSyncService {
         await this.refreshFile(vaultPath);
         modified.push(vaultPath);
       } catch (err) {
-        console.warn(`[file-sync] Failed to refresh ${vaultPath}:`, err);
+        console.error(`[file-sync] Failed to refresh ${vaultPath}:`, err);
       }
     }
 

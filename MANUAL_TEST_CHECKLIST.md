@@ -6,7 +6,7 @@
 - [ ] Plugin built (`npm run build` produces `main.js`)
 
 ## Installation
-- [ ] Copy `main.js`, `manifest.json` to vault's `.obsidian/plugins/obsidian-claude-code/`
+- [ ] Copy `main.js`, `manifest.json` to vault's `.obsidian/plugins/claude-code/`
 - [ ] Enable the plugin in Obsidian Settings → Community Plugins
 - [ ] Plugin loads without console errors
 

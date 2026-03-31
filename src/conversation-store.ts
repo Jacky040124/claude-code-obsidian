@@ -59,7 +59,7 @@ export class ConversationStore {
 			basePath,
 			".obsidian",
 			"plugins",
-			"obsidian-claude-code",
+			"claude-code",
 			"conversations"
 		);
 	}
@@ -206,7 +206,7 @@ export class ConversationStore {
 				const conv: Conversation = JSON.parse(raw);
 				this.cache.set(conv.id, conv);
 			} catch {
-				console.warn(
+				console.error(
 					`[claude-code] Failed to load conversation: ${file}`
 				);
 			}

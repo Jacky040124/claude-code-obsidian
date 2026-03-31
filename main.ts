@@ -30,7 +30,6 @@ export default class ClaudeCodePlugin extends Plugin {
     let mcpPort: number | undefined;
     try {
       mcpPort = await this.mcpServer.start();
-      console.log(`[claude-code] MCP server started on port ${mcpPort}`);
     } catch (err) {
       console.error("[claude-code] Failed to start MCP server:", err);
       new Notice("Claude Code: MCP server failed to start");
