@@ -27,19 +27,23 @@ const ICONS: Record<string, string> = {
 export function renderIcon(el: HTMLElement, name: string, size = 16): void {
 	const svgStr = ICONS[name];
 	if (!svgStr) return;
-	el.innerHTML = svgStr;
-	const svg = el.querySelector("svg");
-	if (svg) {
-		svg.classList.add("svg-icon");
-		// Force explicit pixel dimensions — Obsidian's flex layout + CSS
-		// collapses SVG width to near-zero without this
-		const px = size + "px";
-		svg.setAttribute("width", String(size));
-		svg.setAttribute("height", String(size));
-		svg.style.width = px;
-		svg.style.height = px;
-		svg.style.minWidth = px;
-		svg.style.minHeight = px;
-		svg.style.flexShrink = "0";
+
+	// Parse SVG string safely without innerHTML
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(svgStr, "image/svg+xml");
+	const svg = doc.querySelector("svg");
+	if (!svg) return;
+
+	el.empty();
+	el.appendChild(el.doc.importNode(svg, true));
+
+	const importedSvg = el.querySelector("svg");
+	if (importedSvg) {
+		importedSvg.classList.add("svg-icon");
+		importedSvg.setAttribute("width", String(size));
+		importedSvg.setAttribute("height", String(size));
+		importedSvg.setCssProps({
+			"--icon-size": size + "px",
+		});
 	}
 }

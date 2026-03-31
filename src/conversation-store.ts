@@ -57,7 +57,7 @@ export class ConversationStore {
 		if (!basePath) throw new Error("Cannot determine vault base path");
 		this.conversationsDir = path.join(
 			basePath,
-			".obsidian",
+			app.vault.configDir,
 			"plugins",
 			"claude-code",
 			"conversations"
