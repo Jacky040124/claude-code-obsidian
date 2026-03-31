@@ -179,7 +179,7 @@ export class ClaudeCodeSettingTab extends PluginSettingTab {
 			.setDesc("Additional instructions appended to every request.")
 			.addTextArea((text) =>
 				text
-					.setPlaceholder("Always respond in markdown, keep answers concise")
+					.setPlaceholder("Always respond in Markdown, keep answers concise")
 					.setValue(this.plugin.settings.defaultSystemPrompt)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultSystemPrompt = value;
